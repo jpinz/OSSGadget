@@ -89,10 +89,10 @@ namespace Microsoft.CST.OpenSource.PackageManagers
         /// <returns> n/a </returns>
         public override async Task<IEnumerable<string>> DownloadVersion(PackageURL purl, bool doExtract, bool cached = false)
         {
-            Logger.Trace("DownloadVersion {0}", purl?.ToString());
+            Logger.Trace("DownloadVersion {0}", purl.ToString());
 
-            string? packageName = purl?.Name;
-            string? packageVersion = purl?.Version;
+            string? packageName = purl.Name;
+            string? packageVersion = purl.Version;
             List<string> downloadedPaths = new();
 
             if (string.IsNullOrWhiteSpace(packageName) || string.IsNullOrWhiteSpace(packageVersion))
@@ -172,51 +172,16 @@ namespace Microsoft.CST.OpenSource.PackageManagers
 
                 JsonDocument doc = await GetJsonCache(httpClient, $"{RegistrationEndpoint}{packageName.ToLowerInvariant()}/index.json", useCache);
                 List<string> versionList = new();
-                foreach (JsonElement catalogPage in doc.RootElement.GetProperty("items").EnumerateArray())
+                foreach (string? version in from catalogEntry in await GetAllCatalogEntries(doc, purl) select catalogEntry.GetProperty("version").GetString())
                 {
-                    if (catalogPage.TryGetProperty("items", out JsonElement itemElement))
+                    if (version != null)
                     {
-                        foreach (JsonElement item in itemElement.EnumerateArray())
-                        {
-                            JsonElement catalogEntry = item.GetProperty("catalogEntry");
-                            string? version = catalogEntry.GetProperty("version").GetString();
-                            if (version != null)
-                            {
-                                Logger.Debug("Identified {0} version {1}.", packageName, version);
-                                versionList.Add(version);
-                            }
-                            else
-                            {
-                                Logger.Debug("Identified {0} version NULL. This might indicate a parsing error.", packageName);
-                            }
-                        }
+                        Logger.Debug("Identified {0} version {1}.", packageName, version);
+                        versionList.Add(version);
                     }
                     else
                     {
-                        string? subDocUrl = catalogPage.GetProperty("@id").GetString();
-                        if (subDocUrl != null)
-                        {
-                            JsonDocument subDoc = await GetJsonCache(httpClient, subDocUrl);
-                            foreach (JsonElement subCatalogPage in subDoc.RootElement.GetProperty("items").EnumerateArray())
-                            {
-                                JsonElement catalogEntry = subCatalogPage.GetProperty("catalogEntry");
-                                string? version = catalogEntry.GetProperty("version").GetString();
-                                Logger.Debug("Identified {0} version {1}.", packageName, version);
-                                if (version != null)
-                                {
-                                    Logger.Debug("Identified {0} version {1}.", packageName, version);
-                                    versionList.Add(version);
-                                }
-                                else
-                                {
-                                    Logger.Debug("Identified {0} version NULL. This might indicate a parsing error.", packageName);
-                                }
-                            }
-                        }
-                        else
-                        {
-                            Logger.Debug("Catalog identifier was null.");
-                        }
+                        Logger.Debug("Identified {0} version NULL. This might indicate a parsing error.", packageName);
                     }
                 }
                 return SortVersions(versionList.Distinct());
@@ -284,8 +249,8 @@ namespace Microsoft.CST.OpenSource.PackageManagers
 
             // convert NuGet package data to normalized form
             JsonDocument contentJSON = JsonDocument.Parse(content);
-            JsonElement root = contentJSON.RootElement;
-            JsonElement latestCatalogEntry = GetLatestCatalogEntry(root);
+            List<JsonElement> catalogEntries = await GetAllCatalogEntries(contentJSON, purl);
+            JsonElement latestCatalogEntry = catalogEntries.Last();
 
             metadata.Name = latestCatalogEntry.GetProperty("id").GetString();
             metadata.Description = latestCatalogEntry.GetProperty("description").GetString();
@@ -300,7 +265,7 @@ namespace Microsoft.CST.OpenSource.PackageManagers
             metadata.PackageUri = $"{metadata.PackageManagerUri}/packages/{metadata.Name?.ToLower()}";
             metadata.ApiPackageUri = $"{RegistrationEndpoint}{metadata.Name?.ToLower()}/index.json";
 
-            List<Version> versions = GetVersions(contentJSON);
+            IEnumerable<string> versions = await EnumerateVersions(purl, useCache);
             Version? latestVersion = GetLatestVersion(versions);
 
             if (purl.Version != null)
@@ -317,7 +282,7 @@ namespace Microsoft.CST.OpenSource.PackageManagers
             if (metadata.PackageVersion != null)
             {
                 Version versionToGet = new(metadata.PackageVersion);
-                JsonElement? versionElement = GetVersionElement(contentJSON, versionToGet);
+                JsonElement? versionElement = GetVersionElement(catalogEntries, versionToGet);
                 if (versionElement != null)
                 {
                     // redo the generic values to version specific values
@@ -424,67 +389,6 @@ namespace Microsoft.CST.OpenSource.PackageManagers
             return metadata;
         }
 
-        public JsonElement GetLatestCatalogEntry(JsonElement root)
-        {
-            return root.GetProperty("items").EnumerateArray().Last() // Last CatalogPage
-                .GetProperty("items").EnumerateArray().Last() // Last Package
-                .GetProperty("catalogEntry"); // Get the entry for the most recent package version
-        }
-        
-        public override JsonElement? GetVersionElement(JsonDocument? contentJSON, Version desiredVersion)
-        {
-            if (contentJSON is null) { return null; }
-            JsonElement root = contentJSON.RootElement;
-
-            try
-            {
-                JsonElement catalogPages = root.GetProperty("items");
-                foreach (JsonElement page in catalogPages.EnumerateArray())
-                {
-                    JsonElement entries = page.GetProperty("items");
-                    foreach (JsonElement entry in entries.EnumerateArray())
-                    {
-                        string version = entry.GetProperty("catalogEntry").GetProperty("version").GetString() 
-                                         ?? throw new InvalidOperationException();
-                        if (string.Equals(version, desiredVersion.ToString(), StringComparison.InvariantCultureIgnoreCase))
-                        {
-                            return entry.GetProperty("catalogEntry");
-                        }
-                    }
-                }
-            }
-            catch (KeyNotFoundException) { return null; }
-            catch (InvalidOperationException) { return null; }
-
-            return null;
-        }
-
-        public override List<Version> GetVersions(JsonDocument? contentJSON)
-        {
-            List<Version> allVersions = new();
-            if (contentJSON is null) { return allVersions; }
-
-            JsonElement root = contentJSON.RootElement;
-            try
-            {
-                JsonElement catalogPages = root.GetProperty("items");
-                foreach (JsonElement page in catalogPages.EnumerateArray())
-                {
-                    JsonElement entries = page.GetProperty("items");
-                    foreach (JsonElement entry in entries.EnumerateArray())
-                    {
-                        string version = entry.GetProperty("catalogEntry").GetProperty("version").GetString() 
-                                         ?? throw new InvalidOperationException();
-                        allVersions.Add(new Version(version));
-                    }
-                }
-            }
-            catch (KeyNotFoundException) { return allVersions; }
-            catch (InvalidOperationException) { return allVersions; }
-
-            return allVersions;
-        }
-        
         protected override async Task<Dictionary<PackageURL, double>> SearchRepoUrlsInPackageMetadata(PackageURL purl, string metadata)
         {
             Dictionary<PackageURL, double> mapping = new();
@@ -532,7 +436,7 @@ namespace Microsoft.CST.OpenSource.PackageManagers
         {
             string? packageName = purl.Name;
             string? packageVersion = purl.Version;
-            using HttpClient httpClient = CreateHttpClient();
+            HttpClient httpClient = CreateHttpClient();
             foreach (JsonElement catalogPage in doc.RootElement.GetProperty("items").EnumerateArray())
             {
                 if (catalogPage.TryGetProperty("items", out JsonElement itemElement))
@@ -567,6 +471,79 @@ namespace Microsoft.CST.OpenSource.PackageManagers
                     else
                     {
                         Logger.Debug("Catalog identifier was null.");
+                    }
+                }
+            }
+
+            return null;
+        }
+        
+        private async Task<List<JsonElement>> GetAllCatalogEntries(JsonDocument doc, PackageURL purl)
+        {
+            List<JsonElement> catalogEntries = new();
+            string? packageName = purl.Name;
+            HttpClient httpClient = CreateHttpClient();
+            foreach (JsonElement catalogPage in doc.RootElement.GetProperty("items").EnumerateArray())
+            {
+                if (catalogPage.TryGetProperty("items", out JsonElement itemElement))
+                {
+                    foreach (JsonElement item in itemElement.EnumerateArray())
+                    {
+                        JsonElement catalogEntry = item.GetProperty("catalogEntry");
+                        string? version = catalogEntry.GetProperty("version").GetString();
+                        if (version != null)
+                        {
+                            Logger.Debug("Identified {0} version {1}.", packageName, version);
+                            catalogEntries.Add(catalogEntry);
+                        }
+                        else
+                        {
+                            Logger.Debug("Identified {0} version NULL. This might indicate a parsing error.",
+                                packageName);
+                        }
+                    }
+                }
+                else
+                {
+                    string? subDocUrl = catalogPage.GetProperty("@id").GetString();
+                    if (subDocUrl != null)
+                    {
+                        JsonDocument subDoc = await GetJsonCache(httpClient, subDocUrl);
+                        foreach (JsonElement subCatalogPage in subDoc.RootElement.GetProperty("items").EnumerateArray())
+                        {
+                            JsonElement catalogEntry = subCatalogPage.GetProperty("catalogEntry");
+                            string? version = catalogEntry.GetProperty("version").GetString();
+                            if (version != null)
+                            {
+                                Logger.Debug("Identified {0} version {1}.", packageName, version);
+                                catalogEntries.Add(catalogEntry);
+                            }
+                            else
+                            {
+                                Logger.Debug("Identified {0} version NULL. This might indicate a parsing error.",
+                                    packageName);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        Logger.Debug("Catalog identifier was null.");
+                    }
+                }
+            }
+
+            return catalogEntries;
+        }
+        
+        private static JsonElement? GetVersionElement(List<JsonElement> catalogEntries, Version version)
+        {
+            foreach (JsonElement catalogEntry in catalogEntries)
+            {
+                if (catalogEntry.TryGetProperty("version", out JsonElement versionProp))
+                {
+                    if (versionProp.GetString() == version.ToString())
+                    {
+                        return catalogEntry;
                     }
                 }
             }

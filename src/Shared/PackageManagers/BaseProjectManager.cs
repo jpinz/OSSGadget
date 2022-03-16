@@ -362,6 +362,16 @@ namespace Microsoft.CST.OpenSource.PackageManagers
             }
             return (await EnumerateVersions(purl, useCache)).Any();
         }
+        
+        /// <summary>
+        /// Static overload for getting the latest version.
+        /// </summary>
+        /// <param name="versions">The list of versions as strings.</param>
+        /// <returns>The latest version from the list.</returns>
+        public static Version? GetLatestVersion(IEnumerable<string> versions)
+        {
+            return GetLatestVersion(versions.Select(v => new Version(v)).ToList());
+        }
 
         /// <summary>
         /// Static overload for getting the latest version.
