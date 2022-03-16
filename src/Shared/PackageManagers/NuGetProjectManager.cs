@@ -18,7 +18,6 @@ namespace Microsoft.CST.OpenSource.PackageManagers
     using Utilities;
     using Version = SemanticVersioning.Version;
 
-
     public class NuGetProjectManager : BaseProjectManager
     {
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Modified through reflection.")]
@@ -106,91 +105,33 @@ namespace Microsoft.CST.OpenSource.PackageManagers
             {
                 HttpClient httpClient = CreateHttpClient();
                 JsonDocument doc = await GetJsonCache(httpClient, $"{RegistrationEndpoint}{packageName.ToLowerInvariant()}/index.json");
-                List<string> versionList = new();
-                foreach (JsonElement catalogPage in doc.RootElement.GetProperty("items").EnumerateArray())
-                {
-                    if (catalogPage.TryGetProperty("items", out JsonElement itemElement))
+                JsonElement? catalogEntry = await GetCatalogEntry(doc, purl);
+                if(catalogEntry is not null) {
+                    string? archive = catalogEntry?.GetProperty("packageContent").GetString();
+                    HttpResponseMessage? result = await httpClient.GetAsync(archive);
+                    result.EnsureSuccessStatusCode();
+                    Logger.Debug("Downloading {0}...", purl?.ToString());
+
+                    string? targetName = $"nuget-{packageName}@{packageVersion}";
+                    string extractionPath = Path.Combine(TopLevelExtractionDirectory, targetName);
+                    if (doExtract && Directory.Exists(extractionPath) && cached == true)
                     {
-                        foreach (JsonElement item in itemElement.EnumerateArray())
-                        {
-                            JsonElement catalogEntry = item.GetProperty("catalogEntry");
-                            string? version = catalogEntry.GetProperty("version").GetString();
-                            if (version != null && version.Equals(packageVersion, StringComparison.InvariantCultureIgnoreCase))
-                            {
-                                string? archive = catalogEntry.GetProperty("packageContent").GetString();
-                                HttpResponseMessage? result = await httpClient.GetAsync(archive);
-                                result.EnsureSuccessStatusCode();
-                                Logger.Debug("Downloading {0}...", purl?.ToString());
+                        downloadedPaths.Add(extractionPath);
+                        return downloadedPaths;
+                    }
 
-                                string? targetName = $"nuget-{packageName}@{packageVersion}";
-                                string extractionPath = Path.Combine(TopLevelExtractionDirectory, targetName);
-                                if (doExtract && Directory.Exists(extractionPath) && cached == true)
-                                {
-                                    downloadedPaths.Add(extractionPath);
-                                    return downloadedPaths;
-                                }
-
-                                if (doExtract)
-                                {
-                                    downloadedPaths.Add(await ExtractArchive(targetName, await result.Content.ReadAsByteArrayAsync(), cached));
-                                }
-                                else
-                                {
-                                    targetName += Path.GetExtension(archive) ?? "";
-                                    await File.WriteAllBytesAsync(targetName, await result.Content.ReadAsByteArrayAsync());
-                                    downloadedPaths.Add(targetName);
-                                }
-                                return downloadedPaths;
-                            }
-                        }
+                    if (doExtract)
+                    {
+                        downloadedPaths.Add(await ExtractArchive(targetName, await result.Content.ReadAsByteArrayAsync(), cached));
                     }
                     else
                     {
-                        string? subDocUrl = catalogPage.GetProperty("@id").GetString();
-                        if (subDocUrl != null)
-                        {
-                            JsonDocument subDoc = await GetJsonCache(httpClient, subDocUrl);
-                            foreach (JsonElement subCatalogPage in subDoc.RootElement.GetProperty("items").EnumerateArray())
-                            {
-                                JsonElement catalogEntry = subCatalogPage.GetProperty("catalogEntry");
-                                string? version = catalogEntry.GetProperty("version").GetString();
-                                Logger.Debug("Identified {0} version {1}.", packageName, version);
-                                if (version != null && version.Equals(packageVersion, StringComparison.InvariantCultureIgnoreCase))
-                                {
-                                    string? archive = catalogEntry.GetProperty("packageContent").GetString();
-                                    HttpResponseMessage? result = await httpClient.GetAsync(archive);
-                                    result.EnsureSuccessStatusCode();
-                                    Logger.Debug("Downloading {0}...", purl?.ToString());
-
-                                    string targetName = $"nuget-{packageName}@{packageVersion}";
-                                    string extractionPath = Path.Combine(TopLevelExtractionDirectory, targetName);
-                                    if (doExtract && Directory.Exists(extractionPath) && cached == true)
-                                    {
-                                        downloadedPaths.Add(extractionPath);
-                                        return downloadedPaths;
-                                    }
-
-                                    if (doExtract)
-                                    {
-                                        downloadedPaths.Add(await ExtractArchive(targetName, await result.Content.ReadAsByteArrayAsync(), cached));
-                                    }
-                                    else
-                                    {
-                                        targetName += Path.GetExtension(archive) ?? "";
-                                        await File.WriteAllBytesAsync(targetName, await result.Content.ReadAsByteArrayAsync());
-                                        downloadedPaths.Add(targetName);
-                                    }
-                                    return downloadedPaths;
-                                }
-                            }
-                        }
-                        else
-                        {
-                            Logger.Debug("Catalog identifier was null.");
-                        }
+                        targetName += Path.GetExtension(archive) ?? "";
+                        await File.WriteAllBytesAsync(targetName, await result.Content.ReadAsByteArrayAsync());
+                        downloadedPaths.Add(targetName);
                     }
+                    return downloadedPaths;
                 }
-                Logger.Debug("Unable to find NuGet package.");
             }
             catch (Exception ex)
             {
@@ -587,7 +528,52 @@ namespace Microsoft.CST.OpenSource.PackageManagers
             return mapping;
         }
 
+        private async Task<JsonElement?> GetCatalogEntry(JsonDocument doc, PackageURL purl)
+        {
+            string? packageName = purl.Name;
+            string? packageVersion = purl.Version;
+            using HttpClient httpClient = CreateHttpClient();
+            foreach (JsonElement catalogPage in doc.RootElement.GetProperty("items").EnumerateArray())
+            {
+                if (catalogPage.TryGetProperty("items", out JsonElement itemElement))
+                {
+                    foreach (JsonElement item in itemElement.EnumerateArray())
+                    {
+                        JsonElement catalogEntry = item.GetProperty("catalogEntry");
+                        string? version = catalogEntry.GetProperty("version").GetString();
+                        if (version != null && version.Equals(packageVersion, StringComparison.InvariantCultureIgnoreCase))
+                        {
+                            return catalogEntry;
+                        }
+                    }
+                }
+                else
+                {
+                    string? subDocUrl = catalogPage.GetProperty("@id").GetString();
+                    if (subDocUrl != null)
+                    {
+                        JsonDocument subDoc = await GetJsonCache(httpClient, subDocUrl);
+                        foreach (JsonElement subCatalogPage in subDoc.RootElement.GetProperty("items").EnumerateArray())
+                        {
+                            JsonElement catalogEntry = subCatalogPage.GetProperty("catalogEntry");
+                            string? version = catalogEntry.GetProperty("version").GetString();
+                            Logger.Debug("Identified {0} version {1}.", packageName, version);
+                            if (version != null && version.Equals(packageVersion, StringComparison.InvariantCultureIgnoreCase))
+                            {
+                                return catalogEntry;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        Logger.Debug("Catalog identifier was null.");
+                    }
+                }
+            }
 
+            return null;
+        }
+        
         private NuspecReader? GetNuspec(PackageURL purl)
         {
             string uri = $"{ENV_NUGET_ENDPOINT_API}/v3-flatcontainer/{purl.Name.ToLower()}/{purl.Version}/{purl.Name.ToLower()}.nuspec";
