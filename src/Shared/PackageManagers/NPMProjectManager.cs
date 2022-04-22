@@ -2,11 +2,10 @@
 
 namespace Microsoft.CST.OpenSource.PackageManagers
 {
-    using Contracts;
     using Extensions;
     using Helpers;
     using Microsoft.CST.OpenSource.Model;
-    using PackageActions;
+    using Model.Metadata;
     using PackageUrl;
     using System;
     using System.Collections.Generic;
@@ -16,9 +15,9 @@ namespace Microsoft.CST.OpenSource.PackageManagers
     using System.Text.Json;
     using System.Threading.Tasks;
     using Utilities;
-    using Version = SemanticVersioning.Version;
+    using Version = System.Version;
 
-    public class NPMProjectManager : TypedManager<IManagerPackageVersionMetadata, NPMProjectManager.NPMArtifactType>
+    public class NPMProjectManager : TypedProjectManager<NpmPackageVersionMetadata>
     {
         /// <summary>
         /// The type of the project manager from the package-url type specifications.
@@ -31,23 +30,19 @@ namespace Microsoft.CST.OpenSource.PackageManagers
         public static string ENV_NPM_API_ENDPOINT { get; set; } = "https://registry.npmjs.org";
         public static string ENV_NPM_ENDPOINT { get; set; } = "https://www.npmjs.com";
 
-        public NPMProjectManager(
-            string directory,
-            IManagerPackageActions<IManagerPackageVersionMetadata>? actions = null,
-            IHttpClientFactory? httpClientFactory = null)
-            : base(actions ?? new NoOpPackageActions(), httpClientFactory ?? new DefaultHttpClientFactory(), directory)
+        public NPMProjectManager(IHttpClientFactory httpClientFactory, string destinationDirectory) : base( httpClientFactory, directory: destinationDirectory)
         {
         }
 
         /// <inheritdoc />
-        public override IEnumerable<ArtifactUri<NPMArtifactType>> GetArtifactDownloadUris(PackageURL purl)
+        public override IEnumerable<ArtifactUri<Enum>> GetArtifactDownloadUris(PackageURL purl)
         {
             string feedUrl = (purl.Qualifiers?["repository_url"] ?? ENV_NPM_API_ENDPOINT).EnsureTrailingSlash();
 
             string artifactUri = purl.HasNamespace() ? 
                 $"{feedUrl}{purl.GetNamespaceFormatted()}/{purl.Name}/-/{purl.Name}-{purl.Version}.tgz" : // If there's a namespace.
                 $"{feedUrl}{purl.Name}/-/{purl.Name}-{purl.Version}.tgz"; // If there isn't a namespace.
-            yield return new ArtifactUri<NPMArtifactType>(NPMArtifactType.Tarball, artifactUri);
+            yield return new ArtifactUri<Enum>(NpmPackageVersionMetadata.NpmArtifactType.Tarball, artifactUri);
         }
 
         /// <summary>
@@ -207,9 +202,9 @@ namespace Microsoft.CST.OpenSource.PackageManagers
         }
 
         /// <inheritdoc />
-        public override async Task<PackageMetadata?> GetPackageMetadataAsync(PackageURL purl, bool useCache = true)
+        public override async Task<BasePackageVersionMetadata?> GetPackageMetadataAsync(PackageURL purl, bool useCache = true)
         {
-            PackageMetadata metadata = new();
+            NpmPackageVersionMetadata metadata = new();
             string? content = await GetMetadataAsync(purl, useCache);
             if (string.IsNullOrEmpty(content)) { return null; }
 
@@ -217,14 +212,14 @@ namespace Microsoft.CST.OpenSource.PackageManagers
             JsonDocument contentJSON = JsonDocument.Parse(content);
             JsonElement root = contentJSON.RootElement;
 
-            metadata.Name = root.GetProperty("name").GetString();
+            metadata.Name = root.GetProperty("name").GetString() ?? throw new InvalidOperationException();
             metadata.Description = OssUtilities.GetJSONPropertyStringIfExists(root, "description");
 
-            metadata.PackageManagerUri = ENV_NPM_ENDPOINT;
-            metadata.Platform = "NPM";
-            metadata.Language = "JavaScript";
-            metadata.PackageUri = $"{metadata.PackageManagerUri}/package/{metadata.Name}";
-            metadata.ApiPackageUri = $"{ENV_NPM_API_ENDPOINT}/{metadata.Name}";
+            metadata.RepositoryUrl = new Uri(ENV_NPM_API_ENDPOINT);
+            // metadata.Platform = "NPM";
+            // metadata.Language = "JavaScript";
+            metadata.PackageUri = new Uri($"{ENV_NPM_ENDPOINT}/package/{metadata.Name}");
+            metadata.PackageMetadataUri = new Uri($"{ENV_NPM_API_ENDPOINT}/{metadata.Name}");
 
             List<Version> versions = GetVersions(contentJSON);
             Version? latestVersion = GetLatestVersion(versions);
@@ -232,26 +227,25 @@ namespace Microsoft.CST.OpenSource.PackageManagers
             if (purl.Version != null)
             {
                 // find the version object from the collection
-                metadata.PackageVersion = purl.Version;
+                metadata.Version = purl.Version;
             }
             else
             {
-                metadata.PackageVersion = latestVersion is null ? purl.Version : latestVersion?.ToString();
+                metadata.Version = latestVersion is null ? "Unknown Version" : latestVersion.ToString(); // TODO: Handle this better.
             }
 
-            // if we found any version at all, get the deets
-            if (metadata.PackageVersion != null)
+            // if we found any version at all, get the specifics.
+            if (metadata.Version.IsNotBlank())
             {
-                Version versionToGet = new(metadata.PackageVersion);
+                Version versionToGet = new(metadata.Version);
                 JsonElement? versionElement = GetVersionElement(contentJSON, versionToGet);
                 if (versionElement != null)
                 {
-                    // redo the generic values to version specific values
-                    metadata.PackageUri = $"{ENV_NPM_ENDPOINT}/package/{metadata.Name}";
-                    metadata.VersionUri = $"{ENV_NPM_ENDPOINT}/package/{metadata.Name}/v/{metadata.PackageVersion}";
-                    metadata.ApiVersionUri = $"{ENV_NPM_API_ENDPOINT}/{metadata.Name}/{metadata.PackageVersion}";
+                    // Set the version specific values.
+                    metadata.PackageVersionUri = new Uri($"{ENV_NPM_ENDPOINT}/package/{metadata.Name}/v/{metadata.Version}");
+                    metadata.PackageVersionMetadataUri = new Uri($"{ENV_NPM_API_ENDPOINT}/{metadata.Name}/{metadata.Version}");
 
-                    // prioritize the version level description
+                    // Prioritize the version level description
                     if (OssUtilities.GetJSONPropertyStringIfExists(versionElement, "description") is string description)
                     {
                         metadata.Description = description;
@@ -260,9 +254,10 @@ namespace Microsoft.CST.OpenSource.PackageManagers
                     JsonElement? distElement = OssUtilities.GetJSONPropertyIfExists(versionElement, "dist");
                     if (OssUtilities.GetJSONPropertyIfExists(distElement, "tarball") is JsonElement tarballElement)
                     {
-                        metadata.VersionDownloadUri = tarballElement.ToString().IsBlank() ?
-                            $"{ENV_NPM_API_ENDPOINT}/{metadata.Name}/-/{metadata.Name}-{metadata.PackageVersion}.tgz"
+                        string tarballUrl = tarballElement.ToString().IsBlank()
+                            ? $"{ENV_NPM_API_ENDPOINT}/{metadata.Name}/-/{metadata.Name}-{metadata.Version}.tgz"
                             : tarballElement.ToString();
+                        metadata.SourceArtifactUri = new Uri(tarballUrl);
                     }
 
                     if (OssUtilities.GetJSONPropertyIfExists(distElement, "integrity") is JsonElement integrityElement &&
@@ -270,75 +265,81 @@ namespace Microsoft.CST.OpenSource.PackageManagers
                         integrity.Split('-') is string[] pair &&
                         pair.Length == 2)
                     {
-                        metadata.Signature ??= new List<Digest>();
-                        metadata.Signature.Add(new Digest()
+                        metadata.PublisherSignature ??= new List<Digest>()
                         {
-                            Algorithm = pair[0],
-                            Signature = pair[1]
-                        });
+                            new Digest(Algorithm: pair[0], Signature: pair[1]),
+                        };
                     }
                     
                     // size
                     if (OssUtilities.GetJSONPropertyIfExists(distElement, "unpackedSize") is JsonElement sizeElement &&
                         sizeElement.GetInt64() is long size)
                     {
-                        metadata.Size = size;
+                        metadata.UnpackedSize = size;
                     }
 
                     // check for typescript
-                    List<string>? devDependencies = OssUtilities.ConvertJSONToList(OssUtilities.GetJSONPropertyIfExists(versionElement, "devDependencies"));
+                    /*List<string>? devDependencies = OssUtilities.ConvertJSONToList(OssUtilities.GetJSONPropertyIfExists(versionElement, "devDependencies"));
                     if (devDependencies is not null && devDependencies.Count > 0 && devDependencies.Any(stringToCheck => stringToCheck.Contains("\"typescript\":")))
                     {
                         metadata.Language = "TypeScript";
-                    }
+                    }*/
 
                     // homepage
                     if (OssUtilities.GetJSONPropertyStringIfExists(versionElement, "homepage") is string homepage &&
                         !string.IsNullOrWhiteSpace(homepage))
                     {
-                        metadata.Homepage = homepage;
+                        metadata.Homepage = new Uri(homepage);
                     }
                     
                     // commit id
-                    if (OssUtilities.GetJSONPropertyStringIfExists(versionElement, "gitHead") is string gitHead &&
+                    /*if (OssUtilities.GetJSONPropertyStringIfExists(versionElement, "gitHead") is string gitHead &&
                         !string.IsNullOrWhiteSpace(gitHead))
                     {
                         metadata.CommitId = gitHead;
-                    }
+                    }*/
 
                     // install scripts
                     List<string>? scripts = OssUtilities.ConvertJSONToList(OssUtilities.GetJSONPropertyIfExists(versionElement, "scripts"));
                     if (scripts is not null && scripts.Count > 0)
                     {
-                        metadata.Scripts ??= new List<Command>();
-                        scripts.ForEach((element) => metadata.Scripts.Add(new Command { CommandLine = element }));
+                        List<NpmPackageVersionMetadata.NpmScript> npmScripts = new();
+                        
+                        scripts.ForEach((element) =>
+                        {
+                            string[] script = element.Split(":");
+                            npmScripts.Add(new NpmPackageVersionMetadata.NpmScript(script[0], script[1]));
+                        });
+                        metadata.Scripts = npmScripts;
                     }
 
                     // dependencies
                     List<string>? dependencies = OssUtilities.ConvertJSONToList(OssUtilities.GetJSONPropertyIfExists(versionElement, "dependencies"));
                     if (dependencies is not null && dependencies.Count > 0)
                     {
-                        metadata.Dependencies ??= new List<Dependency>();
-                        dependencies.ForEach((dependency) => metadata.Dependencies.Add(new Dependency() { Package = dependency }));
+                        List<Dependency> dependenciesList = new();
+                        dependencies.ForEach((dependency) => dependenciesList.Add(new Dependency() { Package = dependency }));
+                        metadata.Dependencies = dependenciesList;
                     }
 
-                    // author(s)
-                    JsonElement? authorElement = OssUtilities.GetJSONPropertyIfExists(versionElement, "_npmUser");
-                    if (authorElement is not null)
+                    // publisher
+                    JsonElement? publisherElement = OssUtilities.GetJSONPropertyIfExists(versionElement, "_npmUser");
+                    if (publisherElement is not null)
                     {
-                        User author = new()
+                        User publisher = new()
                         {
-                            Name = OssUtilities.GetJSONPropertyStringIfExists(authorElement, "name"),
-                            Email = OssUtilities.GetJSONPropertyStringIfExists(authorElement, "email"),
-                            Url = OssUtilities.GetJSONPropertyStringIfExists(authorElement, "url")
+                            Name = OssUtilities.GetJSONPropertyStringIfExists(publisherElement, "name"),
+                            Email = OssUtilities.GetJSONPropertyStringIfExists(publisherElement, "email"),
+                            Url = OssUtilities.GetJSONPropertyStringIfExists(publisherElement, "url")
                         };
 
-                        metadata.Authors ??= new List<User>();
-                        metadata.Authors.Add(author);
+                        // TODO: Publisher as user object?
+                        metadata.Publisher = publisher.ToString();
                     }
 
+                    // TODO: Not yet implemented.
                     // maintainers
-                    JsonElement? maintainersElement = OssUtilities.GetJSONPropertyIfExists(versionElement, "maintainers");
+                    /*JsonElement? maintainersElement = OssUtilities.GetJSONPropertyIfExists(versionElement, "maintainers");
                     if (maintainersElement?.EnumerateArray() is JsonElement.ArrayEnumerator maintainerEnumerator)
                     {
                         metadata.Maintainers ??= new List<User>();
@@ -352,7 +353,7 @@ namespace Microsoft.CST.OpenSource.PackageManagers
                                     Url = OssUtilities.GetJSONPropertyStringIfExists(element, "url")
                                 });
                         });
-                    }
+                    }*/
 
                     // repository
                     Dictionary<PackageURL, double> repoMappings = await SearchRepoUrlsInPackageMetadata(purl, content);
@@ -365,8 +366,7 @@ namespace Microsoft.CST.OpenSource.PackageManagers
                         };
                         await repository.ExtractRepositoryMetadata(repoMapping.Key);
 
-                        metadata.Repository ??= new List<Repository>();
-                        metadata.Repository.Add(repository);
+                        metadata.SourceCodeRepository = repository;
                     }
 
                     // keywords
@@ -379,16 +379,19 @@ namespace Microsoft.CST.OpenSource.PackageManagers
                             enumeratorElement.ToList() is List<JsonElement> enumerator &&
                             enumerator.Any())
                         {
+                            // TODO: Idk if this is right?
                             metadata.Licenses ??= new List<License>();
+                            List<License> licenses = new();
                             // TODO: Convert/append SPIX_ID values?
                             enumerator.ForEach((license) =>
                             {
-                                metadata.Licenses.Add(new License()
+                                licenses.Add(new License()
                                 {
                                     Name = OssUtilities.GetJSONPropertyStringIfExists(license, "type"),
                                     Url = OssUtilities.GetJSONPropertyStringIfExists(license, "url")
                                 });
                             });
+                            metadata.Licenses = ((List<License>)metadata.Licenses).Concat(licenses);
                         }
                     }
                 }
@@ -560,12 +563,5 @@ namespace Microsoft.CST.OpenSource.PackageManagers
             "vm",
             "zlib"
         };
-
-        public enum NPMArtifactType
-        {
-            Unknown = 0,
-            Tarball,
-            PackageJson,
-        }
     }
 }

@@ -3,19 +3,26 @@
 namespace Microsoft.CST.OpenSource.PackageManagers
 {
     using Contracts;
+    using Extensions;
+    using Helpers;
     using Microsoft.Extensions.Caching.Memory;
-    using Microsoft.CST.OpenSource.Model;
+    using Model;
+    using Model.Metadata;
+    using PackageUrl;
+    using Polly;
+    using Polly.Contrib.WaitAndRetry;
+    using Polly.Retry;
     using System;
     using System.Collections.Generic;
+    using System.IO;
     using System.Linq;
+    using System.Net;
     using System.Net.Http;
     using System.Text.Json;
     using System.Text.RegularExpressions;
     using System.Threading.Tasks;
     using Utilities;
-    using Version = SemanticVersioning.Version;
-    using PackageUrl;
-    using System.Net;
+    using Version = System.Version;
 
     public abstract class BaseProjectManager
     {
@@ -362,10 +369,10 @@ namespace Microsoft.CST.OpenSource.PackageManagers
         /// Return a normalized package metadata.
         /// </summary>
         /// <param name="purl">The <see cref="PackageURL"/> to get the normalized metadata for.</param>
-        /// <param name="useCache">If the <see cref="PackageMetadata"/> should be retrieved from the cache, if it is available.</param>
+        /// <param name="useCache">If the <see cref="Model.PackageMetadata"/> should be retrieved from the cache, if it is available.</param>
         /// <remarks>If no version specified, defaults to latest version.</remarks>
-        /// <returns>A <see cref="PackageMetadata"/> object representing this <see cref="PackageURL"/>.</returns>
-        public virtual Task<PackageMetadata?> GetPackageMetadataAsync(PackageURL purl, bool useCache = true)
+        /// <returns>A <see cref="BasePackageVersionMetadata"/> object representing this <see cref="PackageURL"/>.</returns>
+        public virtual Task<BasePackageVersionMetadata?> GetPackageMetadataAsync(PackageURL purl, bool useCache = true)
         {
             string typeName = GetType().Name;
             throw new NotImplementedException($"{typeName} does not implement GetPackageMetadata.");

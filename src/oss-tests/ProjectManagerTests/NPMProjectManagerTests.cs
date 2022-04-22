@@ -5,6 +5,7 @@ namespace Microsoft.CST.OpenSource.Tests.ProjectManagerTests
 {
     using Extensions;
     using Model;
+    using Model.Metadata;
     using Moq;
     using oss;
     using PackageActions;
@@ -49,7 +50,7 @@ namespace Microsoft.CST.OpenSource.Tests.ProjectManagerTests
             mockFactory.Setup(_ => _.CreateClient(It.IsAny<string>())).Returns(mockHttp.ToHttpClient());
             _httpFactory = mockFactory.Object;
 
-            _projectManager = new NPMProjectManager(".", new NoOpPackageActions(), _httpFactory);
+            _projectManager = new NPMProjectManager(_httpFactory, ".");
         }
 
         [DataTestMethod]
@@ -62,11 +63,11 @@ namespace Microsoft.CST.OpenSource.Tests.ProjectManagerTests
         public async Task MetadataSucceeds(string purlString, string? description = null)
         {
             PackageURL purl = new(purlString);
-            PackageMetadata? metadata = await _projectManager.GetPackageMetadataAsync(purl, useCache: false);
+            NpmPackageVersionMetadata? metadata = await _projectManager.GetPackageMetadataAsync(purl, useCache: false) as NpmPackageVersionMetadata;
 
             Assert.IsNotNull(metadata);
             Assert.AreEqual(purl.GetFullName(), metadata.Name);
-            Assert.AreEqual(purl.Version, metadata.PackageVersion);
+            Assert.AreEqual(purl.Version, metadata.Version);
             Assert.AreEqual(description, metadata.Description);
         }
         

@@ -26,8 +26,7 @@ namespace Microsoft.CST.OpenSource.Shared
         /// <returns>Location list with single location object</returns>
         public static List<Location> BuildPurlLocation(PackageURL purl)
         {
-            BaseProjectManager? projectManager = ProjectManagerFactory.ConstructPackageManager(purl, null);
-            if (projectManager == null)
+            if (ProjectManagerFactory.ConstructPackageManager(purl, null) is not BaseProjectManager projectManager)
             {
                 Logger.Debug("Cannot determine the package type");
                 return new List<Location>();

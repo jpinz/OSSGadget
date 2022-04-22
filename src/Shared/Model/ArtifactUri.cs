@@ -4,7 +4,6 @@ namespace Microsoft.CST.OpenSource.Model;
 
 using Extensions;
 using System;
-using System.IO;
 
 /// <summary>
 /// A record to represent the type, uri, and extension for an artifact associated with a package.

@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 namespace Microsoft.CST.OpenSource.Tests
 {
     using Model;
+    using Model.Metadata;
     using PackageManagers;
     using PackageUrl;
     using System;
@@ -43,21 +44,22 @@ namespace Microsoft.CST.OpenSource.Tests
                 throw new NullReferenceException("The project manager is null.");
             }
 
-            PackageMetadata metadata = await projectManager.GetPackageMetadataAsync(packageUrl, useCache: false);
+            BasePackageVersionMetadata? metadata = await projectManager.GetPackageMetadataAsync(packageUrl, useCache: false);
             
+            Assert.IsNotNull(metadata);
             Assert.AreEqual("lodash", metadata.Name);
             Assert.AreEqual("Lodash modular utilities.", metadata.Description);
-            Assert.AreEqual("4.17.15", metadata.PackageVersion);
+            Assert.AreEqual("4.17.15", metadata.Version);
 
             string? metadataJson = metadata.ToString();
             
             Assert.IsTrue(metadataJson.Contains("Lodash modular utilities."));
 
-            PackageMetadata metadataFromJson = PackageMetadata.FromJson(metadataJson) ?? throw new InvalidOperationException("Can't deserialize the metadata json.");
+            BasePackageVersionMetadata metadataFromJson = BasePackageVersionMetadata.FromJson(metadataJson) ?? throw new InvalidOperationException("Can't deserialize the metadata json.");
             
             Assert.AreEqual("lodash", metadataFromJson.Name);
             Assert.AreEqual("Lodash modular utilities.", metadataFromJson.Description);
-            Assert.AreEqual("4.17.15", metadataFromJson.PackageVersion);
+            Assert.AreEqual("4.17.15", metadataFromJson.Version);
         }
     }
 }

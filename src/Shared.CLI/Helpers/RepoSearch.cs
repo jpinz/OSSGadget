@@ -59,9 +59,7 @@ namespace Microsoft.CST.OpenSource.Shared
             Logger.Debug("Searching for source code for: {0}", purlNoVersion.ToString());
 
             // Get the correct project manager using the factory.
-            BaseProjectManager? projectManager = _projectManagerFactory.CreateProjectManager(purl);
-
-            if (projectManager != null)
+            if (_projectManagerFactory.CreateProjectManager(purl) is BaseProjectManager projectManager)
             {
                 repoMappings = await projectManager.IdentifySourceRepositoryAsync(purl);
 

@@ -2,11 +2,9 @@
 
 namespace Microsoft.CST.OpenSource.PackageManagers
 {
-    using Contracts;
     using Helpers;
     using Model;
-    using NLog.LayoutRenderers.Wrappers;
-    using PackageActions;
+    using Model.Metadata;
     using PackageUrl;
     using System;
     using System.Collections.Generic;
@@ -16,9 +14,9 @@ namespace Microsoft.CST.OpenSource.PackageManagers
     using System.Text.Json;
     using System.Threading.Tasks;
     using Utilities;
-    using Version = SemanticVersioning.Version;
+    using Version = System.Version;
 
-    public class PyPIProjectManager : TypedManager<IManagerPackageVersionMetadata, PyPIProjectManager.PyPIArtifactType>
+    public class PyPIProjectManager : BaseProjectManager<PyPiPackageVersionMetadata, PyPiPackageVersionMetadata.PyPIArtifactType>
     {
         /// <summary>
         /// The type of the project manager from the package-url type specifications.
@@ -30,23 +28,19 @@ namespace Microsoft.CST.OpenSource.PackageManagers
 
         public static string ENV_PYPI_ENDPOINT { get; set; } = "https://pypi.org";
 
-        public PyPIProjectManager(
-            string directory,
-            IManagerPackageActions<IManagerPackageVersionMetadata>? actions = null,
-            IHttpClientFactory? httpClientFactory = null)
-            : base(actions ?? new NoOpPackageActions(), httpClientFactory ?? new DefaultHttpClientFactory(), directory)
+        public PyPIProjectManager(IHttpClientFactory httpClientFactory, string destinationDirectory) : base(httpClientFactory, null, destinationDirectory)
         {
         }
         
         /// <inheritdoc />
-        public override IEnumerable<ArtifactUri<PyPIArtifactType>> GetArtifactDownloadUris(PackageURL purl)
+        public override IEnumerable<ArtifactUri<PyPiPackageVersionMetadata.PyPIArtifactType>> GetArtifactDownloadUris(PackageURL purl)
         {
             string feedUrl = (purl.Qualifiers?["repository_url"] ?? ENV_PYPI_ENDPOINT).EnsureTrailingSlash();
 
             // Format: https://pypi.org/packages/source/{ package_name_first_letter }/{ package_name }/{ package_name }-{ package_version }.tar.gz
             string artifactUri =
                 $"{feedUrl}packages/source/{char.ToLower(purl.Name[0])}/{purl.Name.ToLower()}/{purl.Name.ToLower()}-{purl.Version}.tar.gz";
-            yield return new ArtifactUri<PyPIArtifactType>(PyPIArtifactType.Tarball, artifactUri);
+            yield return new ArtifactUri<PyPiPackageVersionMetadata.PyPIArtifactType>(PyPiPackageVersionMetadata.PyPIArtifactType.Tarball, artifactUri);
             // TODO: Figure out how to generate .whl file uris.
         }
 
@@ -203,9 +197,9 @@ namespace Microsoft.CST.OpenSource.PackageManagers
         }
 
         /// <inheritdoc />
-        public override async Task<PackageMetadata?> GetPackageMetadataAsync(PackageURL purl, bool useCache = true)
+        public override async Task<BasePackageVersionMetadata?> GetPackageMetadataAsync(PackageURL purl, bool useCache = true)
         {
-            PackageMetadata metadata = new();
+            PyPiPackageVersionMetadata metadata = new();
             string? content = await GetMetadataAsync(purl, useCache);
             if (string.IsNullOrEmpty(content)) { return null; }
 
@@ -216,29 +210,28 @@ namespace Microsoft.CST.OpenSource.PackageManagers
             JsonElement infoElement = root.GetProperty("info");
 
             metadata.Name = OssUtilities.GetJSONPropertyStringIfExists(infoElement, "name");
+
             metadata.Description = OssUtilities.GetJSONPropertyStringIfExists(infoElement, "summary"); // Summary is the short description. Description is usually the readme.
 
-            metadata.PackageManagerUri = ENV_PYPI_ENDPOINT;
-            metadata.PackageUri = OssUtilities.GetJSONPropertyStringIfExists(infoElement, "package_url");
+            metadata.RepositoryUrl = new Uri(ENV_PYPI_ENDPOINT);
+            metadata.PackageUri = new Uri(OssUtilities.GetJSONPropertyStringIfExists(infoElement, "package_url"));
             metadata.Keywords = OssUtilities.ConvertJSONToList(OssUtilities.GetJSONPropertyIfExists(infoElement, "keywords"));
 
-            // author
-            User author = new()
+            // classifiers
+            List<PyPiPackageVersionMetadata.TroveClassification> classifiers = new();
+            foreach (string classifier in OssUtilities.ConvertJSONToList(OssUtilities.GetJSONPropertyIfExists(infoElement, "classifiers")))
             {
-                Name = OssUtilities.GetJSONPropertyStringIfExists(infoElement, "author"),
-                Email = OssUtilities.GetJSONPropertyStringIfExists(infoElement, "author_email"),
-            };
-            metadata.Authors ??= new List<Model.User>();
-            metadata.Authors.Add(author);
+                if (PyPiTroveClassifierParser.Parse(classifier, out PyPiPackageVersionMetadata.TroveClassification troveClassification) != null)
+                {
+                    classifiers.Add(troveClassification);
+                }
+            }
+            metadata.Classifiers = classifiers;
 
-            // maintainers
-            User maintainer = new()
-            {
-                Name = OssUtilities.GetJSONPropertyStringIfExists(infoElement, "maintainer"),
-                Email = OssUtilities.GetJSONPropertyStringIfExists(infoElement, "maintainer_email"),
-            };
-            metadata.Maintainers ??= new List<User>();
-            metadata.Maintainers.Add(maintainer);
+            // author
+            metadata.Publisher = OssUtilities.GetJSONPropertyStringIfExists(infoElement, "author");
+
+            // TODO: maintainers
 
             // repository
             Dictionary<PackageURL, double>? repoMappings = await SearchRepoUrlsInPackageMetadata(purl, content);
@@ -251,19 +244,25 @@ namespace Microsoft.CST.OpenSource.PackageManagers
                 };
                 await repository.ExtractRepositoryMetadata(repoMapping.Key);
 
-                metadata.Repository ??= new List<Repository>();
-                metadata.Repository.Add(repository);
+                metadata.SourceCodeRepository = repository;
             }
 
             // license
             string? licenseType = OssUtilities.GetJSONPropertyStringIfExists(infoElement, "license");
             if (!string.IsNullOrWhiteSpace(licenseType))
             {
+                // TODO: Idk if this is right?
                 metadata.Licenses ??= new List<License>();
-                metadata.Licenses.Add(new License()
+                
+                List<License> licenses = new()
                 {
-                    Name = licenseType
-                });
+                    new License
+                    {
+                        Name = licenseType,
+                    }
+                };
+
+                metadata.Licenses = ((List<License>)metadata.Licenses).Concat(licenses);
             }
 
             // get the version
@@ -273,22 +272,21 @@ namespace Microsoft.CST.OpenSource.PackageManagers
             if (purl.Version != null)
             {
                 // find the version object from the collection
-                metadata.PackageVersion = purl.Version;
+                metadata.Version = purl.Version;
             }
             else
             {
-                metadata.PackageVersion = latestVersion is null ? purl.Version : latestVersion?.ToString();
+                metadata.Version = latestVersion is null ? purl.Version : latestVersion?.ToString();
             }
 
             // if we found any version at all, get the information.
-            if (metadata.PackageVersion is not null)
+            if (metadata.Version is not null)
             {
-                Version versionToGet = new(metadata.PackageVersion);
+                Version versionToGet = new(metadata.Version);
                 JsonElement? versionElement = GetVersionElement(contentJSON, versionToGet);
                 if (versionElement is not null)
                 {
                     // fill the version specific entries
-
                     if (versionElement.Value.ValueKind == JsonValueKind.Array) // I think this should always be true.
                     {
                         foreach (JsonElement releaseFile in versionElement.Value.EnumerateArray())
@@ -297,15 +295,11 @@ namespace Microsoft.CST.OpenSource.PackageManagers
                             if (OssUtilities.GetJSONPropertyIfExists(releaseFile, "digests")?.EnumerateObject()
                                 is JsonElement.ObjectEnumerator digests)
                             {
-                                metadata.Signature ??= new List<Digest>();
-                                foreach (JsonProperty digest in digests)
-                                {
-                                    metadata.Signature.Add(new Digest()
-                                    {
-                                        Algorithm = digest.Name,
-                                        Signature = digest.Value.ToString()
-                                    });
-                                }
+                                // TODO: Idk if this is right?
+                                metadata.Digests ??= new List<Digest>();
+                                List<Digest> digestsList = digests
+                                    .Select(digest => new Digest(digest.Name, digest.Value.ToString())).ToList();
+                                metadata.Digests = ((List<Digest>)metadata.Digests).Concat(digestsList);
                             }
 
                             // TODO: Want to figure out how to store info for .whl files as well.
@@ -321,11 +315,16 @@ namespace Microsoft.CST.OpenSource.PackageManagers
                                     };
                                 }
 
-                                metadata.Size = OssUtilities.GetJSONPropertyIfExists(releaseFile, "size")?.GetInt64();
-                                metadata.UploadTime = OssUtilities.GetJSONPropertyStringIfExists(releaseFile, "upload_time");
-                                metadata.Active = !OssUtilities.GetJSONPropertyIfExists(releaseFile, "yanked")?.GetBoolean();
-                                metadata.VersionUri = $"{ENV_PYPI_ENDPOINT}/project/{purl.Name}/{purl.Version}";
-                                metadata.VersionDownloadUri = OssUtilities.GetJSONPropertyStringIfExists(releaseFile, "url");
+                                // deprecated
+                                if ((bool) OssUtilities.GetJSONPropertyIfExists(releaseFile, "yanked")?.GetBoolean())
+                                {
+                                    metadata.Deprecated = OssUtilities.GetJSONPropertyStringIfExists(releaseFile, "yanked_reason");
+                                }
+                                
+                                metadata.UnpackedSize = OssUtilities.GetJSONPropertyIfExists(releaseFile, "size")?.GetInt64();
+                                metadata.PublishTime = DateTimeOffset.Parse(OssUtilities.GetJSONPropertyStringIfExists(releaseFile, "upload_time"));
+                                metadata.PackageVersionUri = new Uri($"{ENV_PYPI_ENDPOINT}/project/{purl.Name}/{purl.Version}");
+                                metadata.SourceArtifactUri = new Uri(OssUtilities.GetJSONPropertyStringIfExists(releaseFile, "url"));
                             }
                         }
                     }
@@ -438,13 +437,6 @@ namespace Microsoft.CST.OpenSource.PackageManagers
             }
 
             return mapping;
-        }
-
-        public enum PyPIArtifactType
-        {
-            Unknown = 0,
-            Tarball,
-            Wheel,
         }
     }
 }

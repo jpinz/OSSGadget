@@ -2,6 +2,7 @@
 
 namespace Microsoft.CST.OpenSource.PackageManagers
 {
+    using Model.Metadata;
     using PackageActions;
     using PackageUrl;
     using System;
@@ -101,15 +102,15 @@ namespace Microsoft.CST.OpenSource.PackageManagers
                 },
                 {
                     NPMProjectManager.Type, destinationDirectory =>
-                        new NPMProjectManager(destinationDirectory, new NoOpPackageActions(), httpClientFactory)
+                        new NPMProjectManager(httpClientFactory, destinationDirectory)
                 },
                 {
                     NuGetProjectManager.Type, destinationDirectory =>
-                        new NuGetProjectManager(destinationDirectory, new NuGetPackageActions(), httpClientFactory) // Add the NuGetPackageActions to the NuGetProjectManager.
+                        new NuGetProjectManager(httpClientFactory, new NuGetPackageActions(), destinationDirectory) // Add the NuGetPackageActions to the NuGetProjectManager.
                 },
                 {
                     PyPIProjectManager.Type, destinationDirectory =>
-                        new PyPIProjectManager(destinationDirectory, new NoOpPackageActions(), httpClientFactory)
+                        new PyPIProjectManager(httpClientFactory, destinationDirectory)
                 },
                 {
                     UbuntuProjectManager.Type, destinationDirectory =>
@@ -126,6 +127,19 @@ namespace Microsoft.CST.OpenSource.PackageManagers
             };
         }
 
+        /// <summary>
+        /// Creates an appropriate project manager for a <see cref="PackageURL"/> given its <see cref="PackageURL.Type"/>.
+        /// </summary>
+        /// <param name="purl">The <see cref="PackageURL"/> for the package to create the project manager for.</param>
+        /// <param name="destinationDirectory">The new destination directory, if provided.</param>
+        /// <returns>The implementation of <see cref="BaseProjectManager"/> for this <paramref name="purl"/>'s type.</returns>
+        public TypedProjectManager<T>? CreateProjectManager<T>(PackageURL purl, string destinationDirectory = ".") where T : BasePackageVersionMetadata
+        {
+            ConstructProjectManager? projectManager = _projectManagers.GetValueOrDefault(purl.Type);
+
+            return projectManager?.Invoke(destinationDirectory) as TypedProjectManager<T>;
+        }
+        
         /// <summary>
         /// Creates an appropriate project manager for a <see cref="PackageURL"/> given its <see cref="PackageURL.Type"/>.
         /// </summary>
@@ -151,9 +165,9 @@ namespace Microsoft.CST.OpenSource.PackageManagers
         {
             if (overrideManagers != null && overrideManagers.Any())
             {
-                return new ProjectManagerFactory(overrideManagers).CreateProjectManager(packageUrl, destinationDirectory);
+                return new ProjectManagerFactory(overrideManagers).CreateProjectManager(packageUrl, destinationDirectory) as BaseProjectManager;
             }
-            return new ProjectManagerFactory(httpClientFactory).CreateProjectManager(packageUrl, destinationDirectory);
+            return new ProjectManagerFactory(httpClientFactory).CreateProjectManager(packageUrl, destinationDirectory) as BaseProjectManager;
         }
     }
 }

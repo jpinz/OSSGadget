@@ -36,7 +36,8 @@ namespace Microsoft.CST.OpenSource.Tests
             // Only populate validSquats if we want to generate squats.
             if (generateSquats)
             {
-                validSquats = ProjectManagerFactory.GetDefaultManagers()[purl.Type].Invoke()?.EnumerateSquatCandidates(purl)?.Keys;
+                BaseProjectManager? projectManager = ProjectManagerFactory.GetDefaultManagers()[purl.Type].Invoke() as BaseProjectManager;
+                validSquats = projectManager?.EnumerateSquatCandidates(purl)?.Keys;
             }
 
             // Construct the mocked IHttpClientFactory
@@ -50,7 +51,7 @@ namespace Microsoft.CST.OpenSource.Tests
 
             // Override the NuGet constructor to add the mocked NuGetPackageActions.
             managerOverrides[NuGetProjectManager.Type] =
-                _ => new NuGetProjectManager(".", nugetPackageActions, httpClientFactory);
+                _ => new NuGetProjectManager(httpClientFactory, nugetPackageActions, ".");
             
             ProjectManagerFactory projectManagerFactory = new(managerOverrides);
             FindSquatsTool fst = new(projectManagerFactory);
@@ -308,7 +309,7 @@ namespace Microsoft.CST.OpenSource.Tests
             Dictionary<string, ProjectManagerFactory.ConstructProjectManager> overrideDict = ProjectManagerFactory.GetDefaultManagers(httpClientFactory);
 
             overrideDict[NuGetProjectManager.Type] = directory =>
-                new NuGetProjectManager(directory, packageActions, httpClientFactory);
+                new NuGetProjectManager(httpClientFactory, packageActions, directory);
             
             FindPackageSquats findPackageSquats = new(new ProjectManagerFactory(overrideDict), newtonsoft);
 

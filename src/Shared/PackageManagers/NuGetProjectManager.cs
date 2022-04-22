@@ -19,7 +19,7 @@ namespace Microsoft.CST.OpenSource.PackageManagers
     using System.Text.Json;
     using System.Threading.Tasks;
 
-    public class NuGetProjectManager : TypedManager<NuGetPackageVersionMetadata, NuGetProjectManager.NuGetArtifactType>
+    public class NuGetProjectManager : BaseProjectManager<NuGetPackageVersionMetadata, NuGetPackageVersionMetadata.NuGetArtifactType>
     {
         /// <summary>
         /// The type of the project manager from the package-url type specifications.
@@ -38,23 +38,23 @@ namespace Microsoft.CST.OpenSource.PackageManagers
         private string? RegistrationEndpoint { get; set; } = null;
 
         public NuGetProjectManager(
-            string directory,
+            IHttpClientFactory? httpClientFactory = null,
             IManagerPackageActions<NuGetPackageVersionMetadata>? actions = null,
-            IHttpClientFactory? httpClientFactory = null)
-            : base(actions ?? new NuGetPackageActions(), httpClientFactory ?? new DefaultHttpClientFactory(), directory)
+            string directory = ".")
+            : base(httpClientFactory ?? new DefaultHttpClientFactory(), actions ?? new NuGetPackageActions(), directory)
         {
             GetRegistrationEndpointAsync().Wait();
         }
         
         /// <inheritdoc />
-        public override IEnumerable<ArtifactUri<NuGetArtifactType>> GetArtifactDownloadUris(PackageURL purl)
+        public override IEnumerable<ArtifactUri<NuGetPackageVersionMetadata.NuGetArtifactType>> GetArtifactDownloadUris(PackageURL purl)
         {
             string feedUrl = (purl.Qualifiers?["repository_url"] ?? NUGET_DEFAULT_CONTENT_ENDPOINT).EnsureTrailingSlash();
 
             string nupkgUri = $"{feedUrl}{purl.Name.ToLower()}/{purl.Version}/{purl.Name.ToLower()}.{purl.Version}.nupkg";
-            yield return new ArtifactUri<NuGetArtifactType>(NuGetArtifactType.Nupkg, nupkgUri);
+            yield return new ArtifactUri<NuGetPackageVersionMetadata.NuGetArtifactType>(NuGetPackageVersionMetadata.NuGetArtifactType.Nupkg, nupkgUri);
             string nuspecUri = $"{feedUrl}{purl.Name.ToLower()}/{purl.Version}/{purl.Name.ToLower()}.nuspec";
-            yield return new ArtifactUri<NuGetArtifactType>(NuGetArtifactType.Nuspec, nuspecUri);
+            yield return new ArtifactUri<NuGetPackageVersionMetadata.NuGetArtifactType>(NuGetPackageVersionMetadata.NuGetArtifactType.Nuspec, nuspecUri);
         }
 
         /// <summary>
@@ -143,7 +143,7 @@ namespace Microsoft.CST.OpenSource.PackageManagers
         }
         
         /// <inheritdoc />
-        public override async Task<PackageMetadata?> GetPackageMetadataAsync(PackageURL purl, bool useCache = true)
+        public override async Task<BasePackageVersionMetadata?> GetPackageMetadataAsync(PackageURL purl, bool useCache = true)
         {
             string? latestVersion = await Actions.GetLatestVersionAsync(purl) ??
                                     throw new InvalidOperationException($"Can't find the latest version of {purl}");;
@@ -160,18 +160,18 @@ namespace Microsoft.CST.OpenSource.PackageManagers
                 return null;
             }
 
-            PackageMetadata metadata = new();
+            NuGetPackageVersionMetadata metadata = new();
 
             metadata.Name = packageVersionMetadata.Name;
             metadata.Description = packageVersionMetadata.Description;
 
-            metadata.PackageManagerUri = ENV_NUGET_ENDPOINT_API;
-            metadata.Platform = "NUGET";
-            metadata.Language = "C#";
-            metadata.PackageUri = $"{ENV_NUGET_HOMEPAGE}/{packageVersionMetadata.Name.ToLowerInvariant()}";
-            metadata.ApiPackageUri = $"{RegistrationEndpoint}{packageVersionMetadata.Name.ToLowerInvariant()}/index.json";
+            packageVersionMetadata.RepositoryUrl = new Uri(ENV_NUGET_ENDPOINT_API);
+            // metadata.Platform = "NUGET";
+            // metadata.Language = "C#";
+            metadata.PackageUri = new Uri($"{ENV_NUGET_HOMEPAGE}/{packageVersionMetadata.Name.ToLowerInvariant()}");
+            metadata.PackageMetadataUri = new Uri($"{RegistrationEndpoint}{packageVersionMetadata.Name.ToLowerInvariant()}/index.json");
 
-            metadata.PackageVersion = purlWithVersion.Version;
+            metadata.Version = purlWithVersion.Version;
             metadata.LatestPackageVersion = latestVersion;
 
             // Get the metadata for either the specified package version, or the latest package version
@@ -181,87 +181,89 @@ namespace Microsoft.CST.OpenSource.PackageManagers
         }
 
         /// <summary>
-        /// Updates the package version specific values in <see cref="PackageMetadata"/>.
+        /// Updates the package version specific values in <see cref="NuGetPackageVersionMetadata"/>.
         /// </summary>
-        /// <param name="metadata">The <see cref="PackageMetadata"/> object to update with the values for this version.</param>
-        /// <param name="packageVersionPackageVersionMetadata">The <see cref="NuGetPackageVersionMetadata"/> representing this version.</param>
-        private async Task UpdateVersionMetadata(PackageMetadata metadata, NuGetPackageVersionMetadata packageVersionPackageVersionMetadata)
+        /// <param name="finalMetadata">The <see cref="NuGetPackageVersionMetadata"/> object to update with the values for this version.</param>
+        /// <param name="packageVersionMetadata">The <see cref="NuGetPackageVersionMetadata"/> representing this version.</param>
+        private async Task UpdateVersionMetadata(NuGetPackageVersionMetadata finalMetadata, NuGetPackageVersionMetadata packageVersionMetadata)
         {
-            if (metadata.PackageVersion is null)
+            if (finalMetadata.Version is null)
             {
                 return;
             }
 
-            string nameLowercase = packageVersionPackageVersionMetadata.Name.ToLowerInvariant();
+            string nameLowercase = packageVersionMetadata.Name.ToLowerInvariant();
 
             // Set the version specific URI values.
-            metadata.VersionUri = $"{metadata.PackageManagerUri}/packages/{nameLowercase}/{metadata.PackageVersion}";
-            metadata.ApiVersionUri = packageVersionPackageVersionMetadata.CatalogUri.ToString();
+            finalMetadata.PackageVersionUri = new Uri($"{finalMetadata.RepositoryUrl}/packages/{nameLowercase}/{finalMetadata.Version}");
+            finalMetadata.PackageVersionMetadataUri = packageVersionMetadata.PackageVersionMetadataUri;
             
             // Construct the artifact contents url.
-            metadata.VersionDownloadUri = GetNupkgUrl(packageVersionPackageVersionMetadata.Name, metadata.PackageVersion);
+            finalMetadata.SourceArtifactUri = GetNupkgUrl(packageVersionMetadata.Name, finalMetadata.Version);
 
             // TODO: size and hash
 
             // Homepage url
-            metadata.Homepage = packageVersionPackageVersionMetadata.ProjectUrl?.ToString();
+            finalMetadata.Homepage = packageVersionMetadata.Homepage;
 
             // Authors and Maintainers
-            UpdateMetadataAuthorsAndMaintainers(metadata, packageVersionPackageVersionMetadata);
+            UpdateMetadataAuthorsAndMaintainers(finalMetadata, packageVersionMetadata);
 
             // Repository
-            await UpdateMetadataRepository(metadata);
+            await UpdateMetadataRepository(finalMetadata);
 
             // Dependencies
-            IList<PackageDependencyGroup> dependencyGroups = packageVersionPackageVersionMetadata.DependencySets.ToList();
-            metadata.Dependencies ??= dependencyGroups.SelectMany(group => group.Packages, (dependencyGroup, package) => new { dependencyGroup, package})
+            IList<PackageDependencyGroup> dependencyGroups = packageVersionMetadata.DependencySets.ToList();
+            finalMetadata.Dependencies ??= dependencyGroups.SelectMany(group => group.Packages, (dependencyGroup, package) => new { dependencyGroup, package})
                 .Select(dependencyGroupAndPackage => new Dependency() { Package = dependencyGroupAndPackage.package.ToString(), Framework = dependencyGroupAndPackage.dependencyGroup.TargetFramework?.ToString()})
                 .ToList();
 
             // Keywords
-            metadata.Keywords = new List<string>(packageVersionPackageVersionMetadata.Tags.Split(", "));
+            finalMetadata.Keywords = new List<string>(packageVersionMetadata.Tags.Split(", "));
 
             // Licenses
-            if (packageVersionPackageVersionMetadata.LicenseMetadata is not null)
+            if (packageVersionMetadata.LicenseMetadata is not null)
             {
-                metadata.Licenses ??= new List<License>();
-                metadata.Licenses.Add(new License()
+                // TODO: Idk if this is right?
+                finalMetadata.Licenses ??= new List<License>();
+                
+                List<License> licenses = new()
                 {
-                    Name = packageVersionPackageVersionMetadata.LicenseMetadata.License,
-                    Url = packageVersionPackageVersionMetadata.LicenseMetadata.LicenseUrl.ToString()
-                });
+                    new License
+                    {
+                        Name = packageVersionMetadata.LicenseMetadata.License,
+                        Url = packageVersionMetadata.LicenseMetadata.LicenseUrl.ToString()
+                    }
+                };
+
+                finalMetadata.Licenses = ((List<License>)finalMetadata.Licenses).Concat(licenses);
             }
 
             // publishing info
-            metadata.UploadTime = packageVersionPackageVersionMetadata.Published?.ToString("MM/dd/yy HH:mm:ss zz");
+            finalMetadata.PublishTime = packageVersionMetadata.PublishTime;
         }
 
         /// <summary>
-        /// Updates the author(s) and maintainer(s) in <see cref="PackageMetadata"/> for this package version.
+        /// Updates the author(s) and maintainer(s) in <see cref="NuGetPackageVersionMetadata"/> for this package version.
         /// </summary>
-        /// <param name="metadata">The <see cref="PackageMetadata"/> object to set the author(s) and maintainer(s) for this version.</param>
-        /// <param name="packageVersionPackageVersionMetadata">The <see cref="NuGetPackageVersionMetadata"/> representing this version.</param>
-        private static void UpdateMetadataAuthorsAndMaintainers(PackageMetadata metadata, NuGetPackageVersionMetadata packageVersionPackageVersionMetadata)
+        /// <param name="finalMetadata">The <see cref="NuGetPackageVersionMetadata"/> object to set the author(s) and maintainer(s) for this version.</param>
+        /// <param name="packageVersionMetadata">The <see cref="NuGetPackageVersionMetadata"/> representing this version.</param>
+        private static void UpdateMetadataAuthorsAndMaintainers(NuGetPackageVersionMetadata finalMetadata, NuGetPackageVersionMetadata packageVersionMetadata)
         {
             // Author(s)
-            string? authors = packageVersionPackageVersionMetadata.Authors;
-            if (authors is not null)
-            {
-                metadata.Authors ??= new List<User>();
-                authors.Split(", ").ToList()
-                    .ForEach(author => metadata.Authors.Add(new User() { Name = author }));
-            }
+            // TODO: CSV string to list instead.
+            finalMetadata.Authors = packageVersionMetadata.Authors;
 
             // TODO: Collect the data about a package's maintainers as well.
         }
 
         /// <summary>
-        /// Updates the <see cref="Repository"/> for this package version in the <see cref="PackageMetadata"/>.
+        /// Updates the <see cref="Repository"/> for this package version in the <see cref="NuGetPackageVersionMetadata"/>.
         /// </summary>
-        /// <param name="metadata">The <see cref="PackageMetadata"/> object to update with the values for this version.</param>
-        private async Task UpdateMetadataRepository(PackageMetadata metadata)
+        /// <param name="finalMetadata">The <see cref="NuGetPackageVersionMetadata"/> object to update with the values for this version.</param>
+        private async Task UpdateMetadataRepository(NuGetPackageVersionMetadata finalMetadata)
         {
-            NuspecReader? nuspecReader = GetNuspec(metadata.Name!, metadata.PackageVersion!);
+            NuspecReader? nuspecReader = GetNuspec(finalMetadata.Name, finalMetadata.Version);
             RepositoryMetadata? repositoryMetadata = nuspecReader?.GetRepositoryMetadata();
 
             if (repositoryMetadata != null && GitHubProjectManager.IsGitHubRepoUrl(repositoryMetadata.Url, out PackageURL? githubPurl))
@@ -273,8 +275,7 @@ namespace Microsoft.CST.OpenSource.PackageManagers
                 
                 await ghRepository.ExtractRepositoryMetadata(githubPurl!);
 
-                metadata.Repository ??= new List<Repository>();
-                metadata.Repository.Add(ghRepository);
+                finalMetadata.SourceCodeRepository = ghRepository;
             }
         }
 
@@ -284,12 +285,12 @@ namespace Microsoft.CST.OpenSource.PackageManagers
         /// <param name="id">The id/name of the package to get the .nupkg for.</param>
         /// <param name="version">The version of the package to get the .nupkg for.</param>
         /// <returns>The URL for the nupkg file.</returns>
-        private static string GetNupkgUrl(string id, string version)
+        private static Uri GetNupkgUrl(string id, string version)
         {
             string lowerId = id.ToLowerInvariant();
             string lowerVersion = NuGetVersion.Parse(version).ToNormalizedString().ToLowerInvariant();
             string url = $"{NUGET_DEFAULT_CONTENT_ENDPOINT.TrimEnd('/')}/{lowerId}/{lowerVersion}/{lowerId}.{lowerVersion}.nupkg";
-            return url;
+            return new Uri(url);
         }
 
         /// <summary>
@@ -354,12 +355,5 @@ namespace Microsoft.CST.OpenSource.PackageManagers
 
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Modified through reflection.")]
         private static string ENV_NUGET_HOMEPAGE = "https://www.nuget.org/packages";
-
-        public enum NuGetArtifactType
-        {
-            Unknown = 0,
-            Nupkg,
-            Nuspec,
-        }
     }
 }

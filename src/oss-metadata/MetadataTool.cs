@@ -10,6 +10,7 @@ namespace Microsoft.CST.OpenSource
 {
     using Microsoft.CST.OpenSource.Model;
     using Microsoft.CST.OpenSource.PackageManagers;
+    using Model.Metadata;
     using PackageUrl;
 
     public class MetadataTool : OSSGadget
@@ -48,9 +49,9 @@ namespace Microsoft.CST.OpenSource
 
         public MetadataTool(): this(new ProjectManagerFactory()) { }
 
-        private static async Task<PackageMetadata?> GetPackageMetadata(PackageURL purl, ProjectManagerFactory projectManagerFactory, bool useCache = true)
+        private static async Task<BasePackageVersionMetadata?> GetPackageMetadata(PackageURL purl, ProjectManagerFactory projectManagerFactory, bool useCache = true)
         {
-            PackageMetadata? metadata = null;
+            BasePackageVersionMetadata? metadata = null;
             try
             {
                 // Use reflection to find the correct downloader class
@@ -91,7 +92,7 @@ namespace Microsoft.CST.OpenSource
                     {
                         PackageURL purl = new(target);
                         Logger.Info($"Collecting metadata for {purl}");
-                        PackageMetadata? metadata = await GetPackageMetadata(purl, ProjectManagerFactory, options.UseCache);
+                        BasePackageVersionMetadata? metadata = await GetPackageMetadata(purl, ProjectManagerFactory, options.UseCache);
                         Logger.Info(metadata?.ToString());
                     }
                     catch (Exception ex)

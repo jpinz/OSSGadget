@@ -47,7 +47,7 @@ namespace Microsoft.CST.OpenSource
                 destinationDirectory = destinationDir;
             }
 
-            packageManager = projectManagerFactory.CreateProjectManager(purl, destinationDirectory);
+            packageManager = projectManagerFactory.CreateProjectManager(purl, destinationDirectory) as BaseProjectManager;
             if (packageManager == null)
             {
                 // Cannot continue without a package manager.

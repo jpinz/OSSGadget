@@ -2,6 +2,7 @@
 
 namespace Microsoft.CST.OpenSource.Contracts;
 
+using Model.Metadata;
 using PackageUrl;
 using System;
 using System.Collections.Generic;
@@ -11,7 +12,7 @@ using System.Threading.Tasks;
 /// <summary>
 /// The interface to implement project manager specific actions.
 /// </summary>
-public interface IManagerPackageActions<T> where T : IManagerPackageVersionMetadata
+public interface IManagerPackageActions<T> where T : BasePackageVersionMetadata
 {
     /// <summary>
     /// Downloads the file(s) associated with a given <see cref="PackageURL"/>, and optionally extracts it if downloading an archive.

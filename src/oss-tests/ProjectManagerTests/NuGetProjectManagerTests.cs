@@ -68,7 +68,7 @@ namespace Microsoft.CST.OpenSource.Tests.ProjectManagerTests
  
             mockFactory.Setup(_ => _.CreateClient(It.IsAny<string>())).Returns(mockHttp.ToHttpClient());
             _httpFactory = mockFactory.Object;
-            _projectManager = new NuGetProjectManager(".", new NuGetPackageActions(), _httpFactory);
+            _projectManager = new NuGetProjectManager(_httpFactory, new NuGetPackageActions());;
         }
 
         [DataTestMethod]
@@ -81,20 +81,20 @@ namespace Microsoft.CST.OpenSource.Tests.ProjectManagerTests
                 purl,
                 JsonConvert.DeserializeObject<NuGetPackageVersionMetadata>(_metadata[purl.ToString()]),
                 JsonConvert.DeserializeObject<IEnumerable<string>>(_versions[purl.ToString()])?.Reverse());
-            _projectManager = new NuGetProjectManager(".", nugetPackageActions, _httpFactory);
+            _projectManager = new NuGetProjectManager(_httpFactory, nugetPackageActions);
 
-            PackageMetadata metadata = await _projectManager.GetPackageMetadataAsync(purl, useCache: false);
+            NuGetPackageVersionMetadata? metadata = await _projectManager.GetPackageMetadataAsync(purl, useCache: false) as NuGetPackageVersionMetadata;
 
+            Assert.IsNotNull(metadata);
             Assert.AreEqual(purl.Name, metadata.Name, ignoreCase: true);
             
             // If a version was specified, assert the response is for this version, otherwise assert for the latest version.
             Assert.AreEqual(!string.IsNullOrWhiteSpace(purl.Version) ? purl.Version : latestVersion,
-                metadata.PackageVersion);
+                metadata.Version);
             Assert.AreEqual(description, metadata.Description);
             if (!string.IsNullOrWhiteSpace(authors))
             {
-                List<User> authorsList = authors.Split(", ").Select(author => new User() { Name = author }).ToList();
-                CollectionAssert.AreEquivalent(authorsList, metadata.Authors);
+                Assert.AreEqual(authors, metadata.Authors);
             }
         }
         
@@ -114,7 +114,7 @@ namespace Microsoft.CST.OpenSource.Tests.ProjectManagerTests
                 JsonConvert.DeserializeObject<NuGetPackageVersionMetadata>(_metadata[purl.ToString()]),
                 JsonConvert.DeserializeObject<IEnumerable<string>>(_versions[purl.ToString()])?.Reverse(),
                 includePrerelease: includePrerelease);
-            _projectManager = new NuGetProjectManager(".", nugetPackageActions, _httpFactory);
+            _projectManager = new NuGetProjectManager(_httpFactory, nugetPackageActions, ".");
 
             List<string> versions = (await _projectManager.EnumerateVersionsAsync(purl, false, includePrerelease)).ToList();
 

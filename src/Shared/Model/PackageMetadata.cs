@@ -54,7 +54,7 @@ namespace Microsoft.CST.OpenSource.Model
         public string? Pointer_Link { get; set; }
     }
 
-    public class PackageMetadata
+    private class PackageMetadata
     {
         [JsonProperty(PropertyName = "name", NullValueHandling = NullValueHandling.Ignore)]
         public string? Name { get; set; }
@@ -186,15 +186,6 @@ namespace Microsoft.CST.OpenSource.Model
 
         [JsonProperty(PropertyName = "version", NullValueHandling = NullValueHandling.Ignore)]
         public string? VersionString { get; set; }
-    }
-
-    public class Digest
-    {
-        [JsonProperty(PropertyName = "signature_algorithm", NullValueHandling = NullValueHandling.Ignore)]
-        public string? Algorithm { get; set; }
-
-        [JsonProperty(PropertyName = "signature", NullValueHandling = NullValueHandling.Ignore)]
-        public string? Signature { get; set; }
     }
 
     public class Dependency

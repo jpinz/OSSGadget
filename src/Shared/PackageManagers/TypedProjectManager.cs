@@ -4,7 +4,9 @@ namespace Microsoft.CST.OpenSource.PackageManagers;
 
 using Contracts;
 using Extensions;
+using Helpers;
 using Model;
+using Model.Metadata;
 using PackageUrl;
 using Polly;
 using Polly.Contrib.WaitAndRetry;
@@ -27,14 +29,14 @@ using System.Threading.Tasks;
 /// The <see cref="Enum"/> for the valid types a URI of this manager could be.
 /// </typeparam>
 /// TODO: Combine ArtifactUriType and PackageVersionMetadata as they will always be linked. https://github.com/microsoft/OSSGadget/issues/333
-public abstract class TypedManager<T, TArtifactUriType> : BaseProjectManager where T : IManagerPackageVersionMetadata where TArtifactUriType : Enum
+public abstract class TypedProjectManager<T> : BaseProjectManager where T : BasePackageVersionMetadata
 {
     /// <summary>
     /// The actions object to be used in the project manager.
     /// </summary>
-    protected readonly IManagerPackageActions<T> Actions;
+    protected readonly IManagerPackageActions<T>? Actions;
 
-    protected TypedManager(IManagerPackageActions<T> actions, IHttpClientFactory httpClientFactory, string directory) : base(httpClientFactory, directory)
+    protected TypedProjectManager(IHttpClientFactory httpClientFactory, IManagerPackageActions<T>? actions = null, string directory = ".") : base(httpClientFactory, directory)
     {
         Actions = actions;
     }
@@ -43,6 +45,7 @@ public abstract class TypedManager<T, TArtifactUriType> : BaseProjectManager whe
     public override async Task<IEnumerable<string>> DownloadVersionAsync(PackageURL purl, bool doExtract, bool cached = false)
     {
         ArgumentNullException.ThrowIfNull(purl, nameof(purl));
+        Check.NotNull(nameof(Actions), Actions);
         Logger.Trace("DownloadVersion {0}", purl.ToString());
 
         string fileName = purl.ToStringFilename();
@@ -67,6 +70,7 @@ public abstract class TypedManager<T, TArtifactUriType> : BaseProjectManager whe
     public override async Task<bool> PackageExistsAsync(PackageURL purl, bool useCache = true)
     {
         ArgumentNullException.ThrowIfNull(purl, nameof(purl));
+        Check.NotNull(nameof(Actions), Actions);
         Logger.Trace("PackageExists {0}", purl.ToString());
         return await Actions.DoesPackageExistAsync(purl, useCache);
     }
@@ -78,6 +82,7 @@ public abstract class TypedManager<T, TArtifactUriType> : BaseProjectManager whe
         bool includePrerelease = true)
     {
         ArgumentNullException.ThrowIfNull(purl, nameof(purl));
+        Check.NotNull(nameof(Actions), Actions);
         Logger.Trace("EnumerateVersions {0}", purl.ToString());
         return await Actions.GetAllVersionsAsync(purl, includePrerelease, useCache);
     }
@@ -85,6 +90,7 @@ public abstract class TypedManager<T, TArtifactUriType> : BaseProjectManager whe
     /// <inheritdoc />
     public override async Task<string?> GetMetadataAsync(PackageURL purl, bool useCache = true)
     {
+        Check.NotNull(nameof(Actions), Actions);
         return (await Actions.GetMetadataAsync(purl, useCache))?.ToString();
     }
 
@@ -94,7 +100,7 @@ public abstract class TypedManager<T, TArtifactUriType> : BaseProjectManager whe
     /// <param name="purl">The <see cref="PackageURL"/> to get the URI(s) for.</param>
     /// <returns>A list of the relevant <see cref="ArtifactUri{TArtifactUriType}"/>.</returns>
     /// <remarks>Returns the expected URIs for resources. Does not validate that the URIs resolve at the moment of enumeration.</remarks>
-    public abstract IEnumerable<ArtifactUri<TArtifactUriType>> GetArtifactDownloadUris(PackageURL purl);
+    public abstract IEnumerable<ArtifactUri<Enum>> GetArtifactDownloadUris(PackageURL purl);
     
             
     /// <summary>
