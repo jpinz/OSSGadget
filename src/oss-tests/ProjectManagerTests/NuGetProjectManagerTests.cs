@@ -13,6 +13,7 @@ namespace Microsoft.CST.OpenSource.Tests.ProjectManagerTests
     using PackageManagers;
     using PackageUrl;
     using RichardSzalay.MockHttp;
+    using System;
     using System.Collections.Generic;
     using System.Collections.Immutable;
     using System.Linq;
@@ -131,18 +132,18 @@ namespace Microsoft.CST.OpenSource.Tests.ProjectManagerTests
         public async Task GetArtifactDownloadUrisSucceeds_Async(string purlString, string expectedUriBase)
         {
             PackageURL purl = new(purlString);
-            List<ArtifactUri<NuGetProjectManager.NuGetArtifactType>> uris = _projectManager.GetArtifactDownloadUris(purl).ToList();
+            List<ArtifactUri<Enum>> uris = _projectManager.GetArtifactDownloadUris(purl).ToList();
 
             string expectedNuPkgUri = $"{expectedUriBase}.{purl.Version}.nupkg";
             Assert.AreEqual(expectedNuPkgUri, uris.First().Uri.AbsoluteUri);
             Assert.AreEqual(".nupkg", uris.First().Extension);
-            Assert.AreEqual(NuGetProjectManager.NuGetArtifactType.Nupkg, uris.First().Type);
+            Assert.AreEqual(NuGetPackageVersionMetadata.ArtifactType.Nupkg, uris.First().Type);
             Assert.IsTrue(await _projectManager.UriExistsAsync(uris.First().Uri));
             
             string expectedNuspecUri = $"{expectedUriBase}.nuspec";
             Assert.AreEqual(expectedNuspecUri, uris.Last().Uri.AbsoluteUri);
             Assert.AreEqual(".nuspec", uris.Last().Extension);
-            Assert.AreEqual(NuGetProjectManager.NuGetArtifactType.Nuspec, uris.Last().Type);
+            Assert.AreEqual(NuGetPackageVersionMetadata.ArtifactType.Nuspec, uris.Last().Type);
             Assert.IsTrue(await _projectManager.UriExistsAsync(uris.Last().Uri));
 
         }

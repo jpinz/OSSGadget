@@ -12,6 +12,7 @@ namespace Microsoft.CST.OpenSource.Tests.ProjectManagerTests
     using PackageManagers;
     using PackageUrl;
     using RichardSzalay.MockHttp;
+    using System;
     using System.Collections.Generic;
     using System.Collections.Immutable;
     using System.Linq;
@@ -97,11 +98,11 @@ namespace Microsoft.CST.OpenSource.Tests.ProjectManagerTests
         public async Task GetArtifactDownloadUrisSucceeds_Async(string purlString, string expectedUri)
         {
             PackageURL purl = new(purlString);
-            List<ArtifactUri<NPMProjectManager.NPMArtifactType>> uris = _projectManager.GetArtifactDownloadUris(purl).ToList();
+            List<ArtifactUri<Enum>> uris = _projectManager.GetArtifactDownloadUris(purl).ToList();
 
             Assert.AreEqual(expectedUri, uris.First().Uri.AbsoluteUri);
             Assert.AreEqual(".tgz", uris.First().Extension);
-            Assert.AreEqual(NPMProjectManager.NPMArtifactType.Tarball, uris.First().Type);
+            Assert.AreEqual(NpmPackageVersionMetadata.ArtifactType.Tarball, uris.First().Type);
             Assert.IsTrue(await _projectManager.UriExistsAsync(uris.First().Uri));
         }
         

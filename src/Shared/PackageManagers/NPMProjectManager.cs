@@ -15,7 +15,7 @@ namespace Microsoft.CST.OpenSource.PackageManagers
     using System.Text.Json;
     using System.Threading.Tasks;
     using Utilities;
-    using Version = System.Version;
+    using Version = SemanticVersioning.Version;
 
     public class NPMProjectManager : TypedProjectManager<NpmPackageVersionMetadata>
     {
@@ -42,7 +42,7 @@ namespace Microsoft.CST.OpenSource.PackageManagers
             string artifactUri = purl.HasNamespace() ? 
                 $"{feedUrl}{purl.GetNamespaceFormatted()}/{purl.Name}/-/{purl.Name}-{purl.Version}.tgz" : // If there's a namespace.
                 $"{feedUrl}{purl.Name}/-/{purl.Name}-{purl.Version}.tgz"; // If there isn't a namespace.
-            yield return new ArtifactUri<Enum>(NpmPackageVersionMetadata.NpmArtifactType.Tarball, artifactUri);
+            yield return new ArtifactUri<Enum>(NpmPackageVersionMetadata.ArtifactType.Tarball, artifactUri);
         }
 
         /// <summary>

@@ -4,6 +4,7 @@
 namespace Microsoft.CST.OpenSource.Tests.ProjectManagerTests
 {
     using Model;
+    using Model.Metadata;
     using Moq;
     using oss;
     using PackageActions;
@@ -46,7 +47,7 @@ namespace Microsoft.CST.OpenSource.Tests.ProjectManagerTests
             mockFactory.Setup(_ => _.CreateClient(It.IsAny<string>())).Returns(mockHttp.ToHttpClient());
             _httpFactory = mockFactory.Object;
 
-            _projectManager = new PyPIProjectManager(".", new NoOpPackageActions(), _httpFactory);
+            _projectManager = new PyPIProjectManager(_httpFactory, ".");
         }
 
         [Ignore(message: "Ignored until https://github.com/microsoft/OSSGadget/issues/328 is addressed.")]
@@ -57,10 +58,10 @@ namespace Microsoft.CST.OpenSource.Tests.ProjectManagerTests
         public async Task MetadataSucceeds(string purlString, string? description = null)
         {
             PackageURL purl = new(purlString);
-            PackageMetadata metadata = await _projectManager.GetPackageMetadataAsync(purl, useCache: false);
+            BasePackageVersionMetadata metadata = await _projectManager.GetPackageMetadataAsync(purl, useCache: false);
 
             Assert.AreEqual(purl.Name, metadata.Name);
-            Assert.AreEqual(purl.Version, metadata.PackageVersion);
+            Assert.AreEqual(purl.Version, metadata.Version);
             Assert.AreEqual(description, metadata.Description);
         }
         
@@ -84,11 +85,11 @@ namespace Microsoft.CST.OpenSource.Tests.ProjectManagerTests
         public async Task GetArtifactDownloadUrisSucceeds_Async(string purlString, string expectedUri)
         {
             PackageURL purl = new(purlString);
-            List<ArtifactUri<PyPIProjectManager.PyPIArtifactType>> uris = _projectManager.GetArtifactDownloadUris(purl).ToList();
+            List<ArtifactUri<Enum>> uris = _projectManager.GetArtifactDownloadUris(purl).ToList();
 
             Assert.AreEqual(expectedUri, uris.First().Uri.AbsoluteUri);
             Assert.AreEqual(".tar.gz", uris.First().Extension);
-            Assert.AreEqual(PyPIProjectManager.PyPIArtifactType.Tarball, uris.First().Type);
+            Assert.AreEqual(PyPiPackageVersionMetadata.ArtifactType.Tarball, uris.First().Type);
             Assert.IsTrue(await _projectManager.UriExistsAsync(uris.First().Uri));
         }
         

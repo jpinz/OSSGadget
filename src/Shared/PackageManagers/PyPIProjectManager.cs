@@ -14,9 +14,9 @@ namespace Microsoft.CST.OpenSource.PackageManagers
     using System.Text.Json;
     using System.Threading.Tasks;
     using Utilities;
-    using Version = System.Version;
+    using Version = SemanticVersioning.Version;
 
-    public class PyPIProjectManager : BaseProjectManager<PyPiPackageVersionMetadata, PyPiPackageVersionMetadata.PyPIArtifactType>
+    public class PyPIProjectManager : TypedProjectManager<PyPiPackageVersionMetadata>
     {
         /// <summary>
         /// The type of the project manager from the package-url type specifications.
@@ -33,14 +33,14 @@ namespace Microsoft.CST.OpenSource.PackageManagers
         }
         
         /// <inheritdoc />
-        public override IEnumerable<ArtifactUri<PyPiPackageVersionMetadata.PyPIArtifactType>> GetArtifactDownloadUris(PackageURL purl)
+        public override IEnumerable<ArtifactUri<Enum>> GetArtifactDownloadUris(PackageURL purl)
         {
             string feedUrl = (purl.Qualifiers?["repository_url"] ?? ENV_PYPI_ENDPOINT).EnsureTrailingSlash();
 
             // Format: https://pypi.org/packages/source/{ package_name_first_letter }/{ package_name }/{ package_name }-{ package_version }.tar.gz
             string artifactUri =
                 $"{feedUrl}packages/source/{char.ToLower(purl.Name[0])}/{purl.Name.ToLower()}/{purl.Name.ToLower()}-{purl.Version}.tar.gz";
-            yield return new ArtifactUri<PyPiPackageVersionMetadata.PyPIArtifactType>(PyPiPackageVersionMetadata.PyPIArtifactType.Tarball, artifactUri);
+            yield return new ArtifactUri<Enum>(PyPiPackageVersionMetadata.ArtifactType.Tarball, artifactUri);
             // TODO: Figure out how to generate .whl file uris.
         }
 

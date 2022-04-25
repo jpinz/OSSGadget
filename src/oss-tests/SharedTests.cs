@@ -44,7 +44,7 @@ namespace Microsoft.CST.OpenSource.Tests
                 throw new NullReferenceException("The project manager is null.");
             }
 
-            BasePackageVersionMetadata? metadata = await projectManager.GetPackageMetadataAsync(packageUrl, useCache: false);
+            NpmPackageVersionMetadata? metadata = await projectManager.GetPackageMetadataAsync(packageUrl, useCache: false) as NpmPackageVersionMetadata;
             
             Assert.IsNotNull(metadata);
             Assert.AreEqual("lodash", metadata.Name);
@@ -55,7 +55,8 @@ namespace Microsoft.CST.OpenSource.Tests
             
             Assert.IsTrue(metadataJson.Contains("Lodash modular utilities."));
 
-            BasePackageVersionMetadata metadataFromJson = BasePackageVersionMetadata.FromJson(metadataJson) ?? throw new InvalidOperationException("Can't deserialize the metadata json.");
+            // TODO: Idk how to do this the right way.
+            NpmPackageVersionMetadata metadataFromJson = (NpmPackageVersionMetadata.FromJson(metadataJson) ?? throw new InvalidOperationException("Can't deserialize the metadata json.")) as NpmPackageVersionMetadata;
             
             Assert.AreEqual("lodash", metadataFromJson.Name);
             Assert.AreEqual("Lodash modular utilities.", metadataFromJson.Description);

@@ -15,7 +15,7 @@ public record NpmPackageVersionMetadata : BasePackageVersionMetadata
     /// <param name="Command">The command that gets ran in the console when triggered.</param>
     public record NpmScript(string Name, string Command);
     
-    public enum NpmArtifactType
+    public new enum ArtifactType
     {
         Unknown = 0,
         Tarball,

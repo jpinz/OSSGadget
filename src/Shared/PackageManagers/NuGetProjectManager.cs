@@ -19,7 +19,7 @@ namespace Microsoft.CST.OpenSource.PackageManagers
     using System.Text.Json;
     using System.Threading.Tasks;
 
-    public class NuGetProjectManager : BaseProjectManager<NuGetPackageVersionMetadata, NuGetPackageVersionMetadata.NuGetArtifactType>
+    public class NuGetProjectManager : TypedProjectManager<NuGetPackageVersionMetadata>
     {
         /// <summary>
         /// The type of the project manager from the package-url type specifications.
@@ -47,14 +47,14 @@ namespace Microsoft.CST.OpenSource.PackageManagers
         }
         
         /// <inheritdoc />
-        public override IEnumerable<ArtifactUri<NuGetPackageVersionMetadata.NuGetArtifactType>> GetArtifactDownloadUris(PackageURL purl)
+        public override IEnumerable<ArtifactUri<Enum>> GetArtifactDownloadUris(PackageURL purl)
         {
             string feedUrl = (purl.Qualifiers?["repository_url"] ?? NUGET_DEFAULT_CONTENT_ENDPOINT).EnsureTrailingSlash();
 
             string nupkgUri = $"{feedUrl}{purl.Name.ToLower()}/{purl.Version}/{purl.Name.ToLower()}.{purl.Version}.nupkg";
-            yield return new ArtifactUri<NuGetPackageVersionMetadata.NuGetArtifactType>(NuGetPackageVersionMetadata.NuGetArtifactType.Nupkg, nupkgUri);
+            yield return new ArtifactUri<Enum>(NuGetPackageVersionMetadata.ArtifactType.Nupkg, nupkgUri);
             string nuspecUri = $"{feedUrl}{purl.Name.ToLower()}/{purl.Version}/{purl.Name.ToLower()}.nuspec";
-            yield return new ArtifactUri<NuGetPackageVersionMetadata.NuGetArtifactType>(NuGetPackageVersionMetadata.NuGetArtifactType.Nuspec, nuspecUri);
+            yield return new ArtifactUri<Enum>(NuGetPackageVersionMetadata.ArtifactType.Nuspec, nuspecUri);
         }
 
         /// <summary>
@@ -165,7 +165,7 @@ namespace Microsoft.CST.OpenSource.PackageManagers
             metadata.Name = packageVersionMetadata.Name;
             metadata.Description = packageVersionMetadata.Description;
 
-            packageVersionMetadata.RepositoryUrl = new Uri(ENV_NUGET_ENDPOINT_API);
+            metadata.RepositoryUrl = new Uri(ENV_NUGET_ENDPOINT_API);
             // metadata.Platform = "NUGET";
             // metadata.Language = "C#";
             metadata.PackageUri = new Uri($"{ENV_NUGET_HOMEPAGE}/{packageVersionMetadata.Name.ToLowerInvariant()}");

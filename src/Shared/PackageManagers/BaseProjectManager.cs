@@ -2,27 +2,18 @@
 
 namespace Microsoft.CST.OpenSource.PackageManagers
 {
-    using Contracts;
-    using Extensions;
-    using Helpers;
     using Microsoft.Extensions.Caching.Memory;
-    using Model;
     using Model.Metadata;
     using PackageUrl;
-    using Polly;
-    using Polly.Contrib.WaitAndRetry;
-    using Polly.Retry;
     using System;
     using System.Collections.Generic;
-    using System.IO;
     using System.Linq;
-    using System.Net;
     using System.Net.Http;
     using System.Text.Json;
     using System.Text.RegularExpressions;
     using System.Threading.Tasks;
     using Utilities;
-    using Version = System.Version;
+    using Version = SemanticVersioning.Version;
 
     public abstract class BaseProjectManager
     {
