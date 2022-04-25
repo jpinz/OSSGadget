@@ -3,6 +3,7 @@
 namespace Microsoft.CST.OpenSource.Model
 {
     using Newtonsoft.Json;
+    using System;
     using System.Collections.Generic;
 
     public class Downloads
@@ -54,7 +55,9 @@ namespace Microsoft.CST.OpenSource.Model
         public string? Pointer_Link { get; set; }
     }
 
-    private class PackageMetadata
+    [Obsolete(message: "The generic PackageMetadata class has been deprecated in favor" +
+                       " of BasePackageVersionMetadata's implementations.")]
+    public class PackageMetadata
     {
         [JsonProperty(PropertyName = "name", NullValueHandling = NullValueHandling.Ignore)]
         public string? Name { get; set; }
