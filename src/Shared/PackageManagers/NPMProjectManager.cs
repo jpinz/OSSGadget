@@ -212,7 +212,18 @@ namespace Microsoft.CST.OpenSource.PackageManagers
             JsonDocument contentJSON = JsonDocument.Parse(content);
             JsonElement root = contentJSON.RootElement;
 
-            metadata.Name = root.GetProperty("name").GetString() ?? throw new InvalidOperationException();
+            string name = root.GetProperty("name").GetString() ?? throw new InvalidOperationException();
+            if (NpmPackageUtilities.NameIsScoped(name))
+            {
+                (string? scope, string? unscopedName) = NpmPackageUtilities.SplitScopedName(name);
+                metadata.Name = unscopedName;
+                metadata.Namespace = scope;
+            }
+            else
+            {
+                metadata.Name = name;
+            }
+
             metadata.Description = OssUtilities.GetJSONPropertyStringIfExists(root, "description");
 
             metadata.RepositoryUrl = new Uri(ENV_NPM_API_ENDPOINT);
@@ -317,9 +328,26 @@ namespace Microsoft.CST.OpenSource.PackageManagers
                     List<string>? dependencies = OssUtilities.ConvertJSONToList(OssUtilities.GetJSONPropertyIfExists(versionElement, "dependencies"));
                     if (dependencies is not null && dependencies.Count > 0)
                     {
-                        List<Dependency> dependenciesList = new();
-                        dependencies.ForEach((dependency) => dependenciesList.Add(new Dependency() { Package = dependency }));
+                        List<NpmPackageVersionMetadata.NpmDependency> dependenciesList = new();
+                        foreach (string dependency in dependencies)
+                        {
+                            string[] splitDep = dependency.Replace("\"", string.Empty).TrimStart('{').Split(':');
+                            dependenciesList.Add(new NpmPackageVersionMetadata.NpmDependency(splitDep[0], splitDep[1]));
+                        }
                         metadata.Dependencies = dependenciesList;
+                    }
+
+                    // dev dependencies
+                    List<string>? devDependencies = OssUtilities.ConvertJSONToList(OssUtilities.GetJSONPropertyIfExists(versionElement, "devDependencies"));
+                    if (devDependencies is not null && devDependencies.Count > 0)
+                    {
+                        List<NpmPackageVersionMetadata.NpmDependency> devDependenciesList = new();
+                        foreach (string dependency in devDependencies)
+                        {
+                            string[] splitDep = dependency.Replace("\"", string.Empty).TrimStart('{').Split(':');
+                            devDependenciesList.Add(new NpmPackageVersionMetadata.NpmDependency(splitDep[0], splitDep[1]));
+                        }
+                        metadata.DevDependencies = devDependenciesList;
                     }
 
                     // publisher
@@ -373,27 +401,28 @@ namespace Microsoft.CST.OpenSource.PackageManagers
                     metadata.Keywords = OssUtilities.ConvertJSONToList(OssUtilities.GetJSONPropertyIfExists(versionElement, "keywords"));
 
                     // licenses
+                    if (OssUtilities.GetJSONEnumerator(OssUtilities.GetJSONPropertyIfExists(versionElement, "licenses"))
+                            is JsonElement.ArrayEnumerator enumeratorElement &&
+                        enumeratorElement.ToList() is List<JsonElement> enumerator &&
+                        enumerator.Any())
                     {
-                        if (OssUtilities.GetJSONEnumerator(OssUtilities.GetJSONPropertyIfExists(versionElement, "licenses"))
-                                is JsonElement.ArrayEnumerator enumeratorElement &&
-                            enumeratorElement.ToList() is List<JsonElement> enumerator &&
-                            enumerator.Any())
+                        // TODO: Idk if this is right?
+                        metadata.Licenses ??= new List<License>();
+                        List<License> licenses = new();
+                        // TODO: Convert/append SPIX_ID values?
+                        enumerator.ForEach((license) =>
                         {
-                            // TODO: Idk if this is right?
-                            metadata.Licenses ??= new List<License>();
-                            List<License> licenses = new();
-                            // TODO: Convert/append SPIX_ID values?
-                            enumerator.ForEach((license) =>
+                            licenses.Add(new License()
                             {
-                                licenses.Add(new License()
-                                {
-                                    Name = OssUtilities.GetJSONPropertyStringIfExists(license, "type"),
-                                    Url = OssUtilities.GetJSONPropertyStringIfExists(license, "url")
-                                });
+                                Name = OssUtilities.GetJSONPropertyStringIfExists(license, "type"),
+                                Url = OssUtilities.GetJSONPropertyStringIfExists(license, "url")
                             });
-                            metadata.Licenses = ((List<License>)metadata.Licenses).Concat(licenses);
-                        }
+                        });
+                        metadata.Licenses = ((List<License>)metadata.Licenses).Concat(licenses);
                     }
+
+                    // deprecated
+                    metadata.Deprecated = OssUtilities.GetJSONPropertyStringIfExists(versionElement, "deprecated");
                 }
             }
 

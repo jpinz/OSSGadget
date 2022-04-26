@@ -11,7 +11,7 @@ public abstract record BasePackageVersionMetadata
     public string? Namespace { get; protected internal set; }
     public string Name { get; protected internal set; }
     public string Version { get; protected internal set; }
-    public string Protocol { get; protected internal set; }
+    public string Protocol { get; }
     public Uri RepositoryUrl { get; protected internal set; }
     public string? Publisher { get; protected internal set; }
     public string? Description { get; protected internal set; }
