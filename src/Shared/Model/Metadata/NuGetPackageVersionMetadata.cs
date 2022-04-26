@@ -81,13 +81,23 @@ public record NuGetPackageVersionMetadata : BasePackageVersionMetadata
 
     [JsonProperty(PropertyName = JsonProperties.Tags)]
     [JsonConverter(typeof(MetadataFieldConverter))]
-    public string Tags { get; protected internal set; }
+    private string Tags;
+
+    /// <summary>
+    /// Map the CSV <see cref="Tags"/> to <see cref="Keywords"/>.
+    /// </summary>
+    public new IEnumerable<string> Keywords => new List<string>(Tags.Split(", "));
 
     [JsonProperty(PropertyName = JsonProperties.Title)]
     public string Title { get; protected internal set; }
 
     [JsonProperty(PropertyName = JsonProperties.Listed)]
-    public bool IsListed { get; protected internal set; } // Deprecated?
+    public bool IsListed { get; protected internal set; } // Not listed, but doesn't mean deprecated.
+    
+    public new string Deprecated { get; protected internal set; }
+    
+    [JsonProperty(PropertyName = JsonProperties.Deprecation)]
+    public PackageDeprecationMetadata Deprecation { get; protected internal set; }
 
     [JsonProperty(PropertyName = JsonProperties.PrefixReserved)]
     public bool PrefixReserved { get; protected internal set; }
@@ -109,7 +119,7 @@ public record NuGetPackageVersionMetadata : BasePackageVersionMetadata
     }
 
     /// <summary>
-    /// protected internal setialize an instance of <see cref="NuGetPackageVersionMetadata"/> using the <see cref="JsonConstructorAttribute"/>.
+    /// protected internal serialize an instance of <see cref="NuGetPackageVersionMetadata"/> using the <see cref="JsonConstructorAttribute"/>.
     /// </summary>
     /// <remarks>Necessary for unit test implementation of json serialization and deserialization.</remarks>
     [JsonConstructor]
@@ -119,7 +129,7 @@ public record NuGetPackageVersionMetadata : BasePackageVersionMetadata
     {}
 
     /// <summary>
-    /// protected internal setialize an instance of <see cref="NuGetPackageVersionMetadata"/> using values from a <see cref="PackageSearchMetadataRegistration"/>.
+    /// protected internal serialize an instance of <see cref="NuGetPackageVersionMetadata"/> using values from a <see cref="PackageSearchMetadataRegistration"/>.
     /// </summary>
     /// <param name="registration">The <see cref="PackageSearchMetadataRegistration"/> to get the values from.</param>
     public NuGetPackageVersionMetadata(PackageSearchMetadataRegistration registration)
@@ -147,5 +157,7 @@ public record NuGetPackageVersionMetadata : BasePackageVersionMetadata
         LicenseMetadata = registration.LicenseMetadata;
         Vulnerabilities = registration.Vulnerabilities;
         PackageVersionMetadataUri = registration.CatalogUri;
+        Deprecated = registration.DeprecationMetadata.Message;
+        Deprecation = registration.DeprecationMetadata;
     }
 } 
