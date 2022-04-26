@@ -8,7 +8,6 @@ using System.Collections.Generic;
 
 public static class PyPiTroveClassifierParser
 {
-
     internal static readonly List<string> ParentClassifiers = new()
     {
         "Development Status",
