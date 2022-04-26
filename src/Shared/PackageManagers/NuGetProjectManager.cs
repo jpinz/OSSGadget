@@ -160,10 +160,7 @@ namespace Microsoft.CST.OpenSource.PackageManagers
                 return null;
             }
 
-            NuGetPackageVersionMetadata metadata = new();
-
-            metadata.Name = packageVersionMetadata.Name;
-            metadata.Description = packageVersionMetadata.Description;
+            NuGetPackageVersionMetadata metadata = packageVersionMetadata;
 
             metadata.RepositoryUrl = new Uri(ENV_NUGET_ENDPOINT_API);
             // metadata.Platform = "NUGET";
@@ -187,24 +184,10 @@ namespace Microsoft.CST.OpenSource.PackageManagers
         /// <param name="packageVersionMetadata">The <see cref="NuGetPackageVersionMetadata"/> representing this version.</param>
         private async Task UpdateVersionMetadata(NuGetPackageVersionMetadata finalMetadata, NuGetPackageVersionMetadata packageVersionMetadata)
         {
-            if (finalMetadata.Version is null)
-            {
-                return;
-            }
-
-            string nameLowercase = packageVersionMetadata.Name.ToLowerInvariant();
-
-            // Set the version specific URI values.
-            finalMetadata.PackageVersionUri = new Uri($"{finalMetadata.RepositoryUrl}/packages/{nameLowercase}/{finalMetadata.Version}");
-            finalMetadata.PackageVersionMetadataUri = packageVersionMetadata.PackageVersionMetadataUri;
-            
             // Construct the artifact contents url.
             finalMetadata.SourceArtifactUri = GetNupkgUrl(packageVersionMetadata.Name, finalMetadata.Version);
 
             // TODO: size and hash
-
-            // Homepage url
-            finalMetadata.Homepage = packageVersionMetadata.Homepage;
 
             // Authors and Maintainers
             UpdateMetadataAuthorsAndMaintainers(finalMetadata, packageVersionMetadata);
@@ -217,9 +200,6 @@ namespace Microsoft.CST.OpenSource.PackageManagers
             finalMetadata.Dependencies ??= dependencyGroups.SelectMany(group => group.Packages, (dependencyGroup, package) => new { dependencyGroup, package})
                 .Select(dependencyGroupAndPackage => new Dependency() { Package = dependencyGroupAndPackage.package.ToString(), Framework = dependencyGroupAndPackage.dependencyGroup.TargetFramework?.ToString()})
                 .ToList();
-
-            // Keywords
-            finalMetadata.Keywords = new List<string>(packageVersionMetadata.Tags.Split(", "));
 
             // Licenses
             if (packageVersionMetadata.LicenseMetadata is not null)
@@ -238,9 +218,6 @@ namespace Microsoft.CST.OpenSource.PackageManagers
 
                 finalMetadata.Licenses = ((List<License>)finalMetadata.Licenses).Concat(licenses);
             }
-
-            // publishing info
-            finalMetadata.PublishTime = packageVersionMetadata.PublishTime;
         }
 
         /// <summary>
