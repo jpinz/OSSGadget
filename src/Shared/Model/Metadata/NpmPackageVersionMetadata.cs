@@ -15,7 +15,7 @@ public record NpmPackageVersionMetadata : BasePackageVersionMetadata
     /// Scope is the term used in NPM for the namespace, this is just for convenience sake.
     /// It also prepends the @ symbol for npm scopes.
     /// </summary>
-    public string? Scope => $"@{Namespace}";
+    public string? Scope => Namespace != null ? $"@{Namespace}" : null;
 
     public new IEnumerable<NpmDependency> Dependencies { get; protected internal set; }
     
