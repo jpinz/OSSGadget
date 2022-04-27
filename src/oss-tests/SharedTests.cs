@@ -44,7 +44,7 @@ namespace Microsoft.CST.OpenSource.Tests
                 throw new NullReferenceException("The project manager is null.");
             }
 
-            NpmPackageVersionMetadata? metadata = await projectManager.GetPackageMetadataAsync(packageUrl, useCache: false) as NpmPackageVersionMetadata;
+            BasePackageVersionMetadata? metadata = await projectManager.GetPackageMetadataAsync(packageUrl, useCache: false);
             
             Assert.IsNotNull(metadata);
             Assert.AreEqual("lodash", metadata.Name);

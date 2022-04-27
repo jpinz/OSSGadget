@@ -94,10 +94,10 @@ public record NuGetPackageVersionMetadata : BasePackageVersionMetadata
     [JsonProperty(PropertyName = JsonProperties.Listed)]
     public bool IsListed { get; protected internal set; } // Not listed, but doesn't mean deprecated.
     
-    public new string Deprecated { get; protected internal set; }
+    public new string? Deprecated { get; protected internal set; }
     
     [JsonProperty(PropertyName = JsonProperties.Deprecation)]
-    public PackageDeprecationMetadata Deprecation { get; protected internal set; }
+    public PackageDeprecationMetadata? Deprecation { get; protected internal set; }
 
     [JsonProperty(PropertyName = JsonProperties.PrefixReserved)]
     public bool PrefixReserved { get; protected internal set; }
@@ -157,7 +157,7 @@ public record NuGetPackageVersionMetadata : BasePackageVersionMetadata
         LicenseMetadata = registration.LicenseMetadata;
         Vulnerabilities = registration.Vulnerabilities;
         PackageVersionMetadataUri = registration.CatalogUri;
-        Deprecated = registration.DeprecationMetadata.Message;
+        Deprecated = registration.DeprecationMetadata?.Message;
         Deprecation = registration.DeprecationMetadata;
     }
 } 

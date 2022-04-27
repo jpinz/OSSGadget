@@ -157,7 +157,7 @@ namespace Microsoft.CST.OpenSource.PackageManagers
         }
         
         /// <inheritdoc />
-        public override async Task<BasePackageVersionMetadata?> GetPackageMetadataAsync(PackageURL purl, bool useCache = true)
+        public override async Task<NuGetPackageVersionMetadata?> GetPackageMetadataAsync(PackageURL purl, bool useCache = true)
         {
             string? latestVersion = await Actions.GetLatestVersionAsync(purl) ??
                                     throw new InvalidOperationException($"Can't find the latest version of {purl}");;

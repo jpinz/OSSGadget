@@ -94,6 +94,8 @@ public abstract class TypedProjectManager<T> : BaseProjectManager where T : Base
         return (await Actions.GetMetadataAsync(purl, useCache))?.ToString();
     }
 
+    public new abstract Task<T?> GetPackageMetadataAsync(PackageURL purl, bool useCache = true);
+
     /// <summary>
     /// Gets the relevant URI(s) to download the files related to a <see cref="PackageURL"/>.
     /// </summary>

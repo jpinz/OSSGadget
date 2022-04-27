@@ -57,7 +57,7 @@ namespace Microsoft.CST.OpenSource.Tests.ProjectManagerTests
         public async Task MetadataSucceeds(string purlString, string? description = null)
         {
             PackageURL purl = new(purlString);
-            BasePackageVersionMetadata metadata = await _projectManager.GetPackageMetadataAsync(purl, useCache: false);
+            PyPiPackageVersionMetadata? metadata = await _projectManager.GetPackageMetadataAsync(purl, useCache: false);
 
             Assert.AreEqual(purl.Name, metadata.Name);
             Assert.AreEqual(purl.Version, metadata.Version);

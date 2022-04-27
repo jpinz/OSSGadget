@@ -2,15 +2,17 @@
 
 namespace Microsoft.CST.OpenSource.Model.Metadata;
 
+using Helpers;
 using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
+using System.Net;
 
 public abstract record BasePackageVersionMetadata
 {
     public string? Namespace { get; protected internal set; }
     public string Name { get; protected internal set; }
-    public string Version { get; protected internal set; }
+    public string? Version { get; protected internal set; }
     public string Protocol { get; }
     public Uri RepositoryUrl { get; protected internal set; }
     public string? Publisher { get; protected internal set; }
@@ -26,7 +28,7 @@ public abstract record BasePackageVersionMetadata
     public IEnumerable<object>? Dependencies { get; protected internal set; }
     public Uri PackageUri { get; protected internal set; }
     public Uri PackageMetadataUri { get; protected internal set; }
-    public DateTimeOffset PublishTime { get; protected internal set; }
+    public DateTimeOffset? PublishTime { get; protected internal set; }
     public Uri? SourceArtifactUri { get; protected internal set; }
     public IEnumerable<Uri>? BinaryArtifactUris { get; protected internal set; }
     public Uri? PackageVersionUri { get; protected internal set; }
@@ -55,5 +57,27 @@ public abstract record BasePackageVersionMetadata
     public static BasePackageVersionMetadata? FromJson(string json)
     {
         return JsonConvert.DeserializeObject<BasePackageVersionMetadata>(json);
+    }
+    
+    /// <summary>
+    /// Gets the package's full name including namespace if applicable.
+    /// </summary>
+    /// <example>
+    /// pkg:npm/lodash -> lodash
+    /// pkg:npm/angular/core -> @angular/core
+    /// pkg:nuget/newtonsoft.json -> newtonsoft.json
+    /// </example>
+    /// <param name="encoded">If the name should be url encoded, defaults to false.</param>
+    /// <returns>The full name.</returns>
+    public string GetFullName(bool encoded = false)
+    {
+        if (this.Namespace.IsBlank())
+        {
+            return this.Name;
+        }
+
+        string name = $"{this.Namespace}/{this.Name}";
+        
+        return encoded ? name : WebUtility.UrlDecode(name);
     }
 }

@@ -2,8 +2,10 @@
 
 namespace Microsoft.CST.OpenSource.Model.Metadata;
 
+using Helpers;
 using PackageManagers;
 using System.Collections.Generic;
+using System.Net;
 
 public record NpmPackageVersionMetadata : BasePackageVersionMetadata
 {
@@ -11,8 +13,9 @@ public record NpmPackageVersionMetadata : BasePackageVersionMetadata
 
     /// <summary>
     /// Scope is the term used in NPM for the namespace, this is just for convenience sake.
+    /// It also prepends the @ symbol for npm scopes.
     /// </summary>
-    public string? Scope => Namespace;
+    public string? Scope => $"@{Namespace}";
 
     public new IEnumerable<NpmDependency> Dependencies { get; protected internal set; }
     
@@ -33,6 +36,20 @@ public record NpmPackageVersionMetadata : BasePackageVersionMetadata
     /// <param name="Name">The name of the package being depended on.</param>
     /// <param name="Version">The version of the package being depended on.</param>
     public record NpmDependency(string Name, string Version);
+
+    /// <inheritdoc cref="BasePackageVersionMetadata.GetFullName" />
+    public new string GetFullName(bool encoded = false)
+    {
+        if (this.Namespace.IsBlank())
+        {
+            return this.Name;
+        }
+
+        string name = $"{this.Scope}/{this.Name}";
+        
+        // The full name for scoped npm packages should have an '@' at the beginning.
+        return encoded ? name : WebUtility.UrlDecode(name);
+    }
     
     public new enum ArtifactType
     {

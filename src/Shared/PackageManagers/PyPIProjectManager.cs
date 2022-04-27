@@ -210,7 +210,7 @@ namespace Microsoft.CST.OpenSource.PackageManagers
         }
 
         /// <inheritdoc />
-        public override async Task<BasePackageVersionMetadata?> GetPackageMetadataAsync(PackageURL purl, bool useCache = true)
+        public override async Task<PyPiPackageVersionMetadata?> GetPackageMetadataAsync(PackageURL purl, bool useCache = true)
         {
             PyPiPackageVersionMetadata metadata = new();
             string? content = await GetMetadataAsync(purl, useCache);

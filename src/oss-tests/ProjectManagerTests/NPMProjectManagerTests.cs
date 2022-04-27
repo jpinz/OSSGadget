@@ -64,10 +64,10 @@ namespace Microsoft.CST.OpenSource.Tests.ProjectManagerTests
         public async Task MetadataSucceeds(string purlString, string? description = null)
         {
             PackageURL purl = new(purlString);
-            NpmPackageVersionMetadata? metadata = await _projectManager.GetPackageMetadataAsync(purl, useCache: false) as NpmPackageVersionMetadata;
+            NpmPackageVersionMetadata? metadata = await _projectManager.GetPackageMetadataAsync(purl, useCache: false);
 
             Assert.IsNotNull(metadata);
-            Assert.AreEqual(purl.GetFullName(), metadata.Name);
+            Assert.AreEqual(purl.GetFullName(), metadata.GetFullName());
             Assert.AreEqual(purl.Version, metadata.Version);
             Assert.AreEqual(description, metadata.Description);
         }

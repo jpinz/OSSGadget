@@ -215,7 +215,7 @@ namespace Microsoft.CST.OpenSource.PackageManagers
         }
 
         /// <inheritdoc />
-        public override async Task<BasePackageVersionMetadata?> GetPackageMetadataAsync(PackageURL purl, bool useCache = true)
+        public override async Task<NpmPackageVersionMetadata?> GetPackageMetadataAsync(PackageURL purl, bool useCache = true)
         {
             NpmPackageVersionMetadata metadata = new();
             string? content = await GetMetadataAsync(purl, useCache);

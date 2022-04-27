@@ -84,7 +84,7 @@ namespace Microsoft.CST.OpenSource.Tests.ProjectManagerTests
                 JsonConvert.DeserializeObject<IEnumerable<string>>(_versions[purl.ToString()])?.Reverse());
             _projectManager = new NuGetProjectManager(_httpFactory, nugetPackageActions);
 
-            NuGetPackageVersionMetadata? metadata = await _projectManager.GetPackageMetadataAsync(purl, useCache: false) as NuGetPackageVersionMetadata;
+            NuGetPackageVersionMetadata? metadata = await _projectManager.GetPackageMetadataAsync(purl, useCache: false);
 
             Assert.IsNotNull(metadata);
             Assert.AreEqual(purl.Name, metadata.Name, ignoreCase: true);
