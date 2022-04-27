@@ -166,6 +166,19 @@ namespace Microsoft.CST.OpenSource.PackageManagers
         }
 
         /// <summary>
+        /// Gets the <see cref="DateTime"/> a package version was published at.
+        /// </summary>
+        /// <param name="purl">Package URL specifying the package. Version is mandatory.</param>
+        /// <param name="useCache">If the cache should be used when looking for the published time.</param>
+        /// <returns>The <see cref="DateTime"/> when this version was published, or null if not found.</returns>
+        public async Task<DateTime?> GetPublishedAtAsync(PackageURL purl, bool useCache = true)
+        {
+            Check.NotNull(nameof(purl.Version), purl.Version);
+            DateTime? uploadTime = (await this.GetPackageMetadataAsync(purl, useCache))?.PublishTime?.DateTime;
+            return uploadTime;
+        }
+
+        /// <summary>
         /// Gets the latest version of the package
         /// </summary>
         /// <param name="contentJSON"></param>
@@ -250,6 +263,16 @@ namespace Microsoft.CST.OpenSource.PackageManagers
             {
                 Version versionToGet = new(metadata.Version);
                 JsonElement? versionElement = GetVersionElement(contentJSON, versionToGet);
+                
+                if (root.TryGetProperty("time", out JsonElement time))
+                {
+                    string? uploadTime = OssUtilities.GetJSONPropertyStringIfExists(time, metadata.Version);
+                    if (uploadTime != null)
+                    {
+                        metadata.PublishTime = DateTime.Parse(uploadTime);
+                    }
+                }
+
                 if (versionElement != null)
                 {
                     // Set the version specific values.

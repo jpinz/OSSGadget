@@ -181,6 +181,19 @@ namespace Microsoft.CST.OpenSource.PackageManagers
             }
         }
 
+        /// <summary>
+        /// Gets the <see cref="DateTime"/> a package version was published at.
+        /// </summary>
+        /// <param name="purl">Package URL specifying the package. Version is mandatory.</param>
+        /// <param name="useCache">If the cache should be used when looking for the published time.</param>
+        /// <returns>The <see cref="DateTime"/> when this version was published, or null if not found.</returns>
+        public async Task<DateTime?> GetPublishedAtAsync(PackageURL purl, bool useCache = true)
+        {
+            Check.NotNull(nameof(purl.Version), purl.Version);
+            DateTime? uploadTime = (await this.GetPackageMetadataAsync(purl, useCache))?.PublishTime?.DateTime;
+            return uploadTime;
+        }
+
         public override async Task<string?> GetMetadataAsync(PackageURL purl, bool useCache = true)
         {
             try
@@ -203,7 +216,6 @@ namespace Microsoft.CST.OpenSource.PackageManagers
             string? content = await GetMetadataAsync(purl, useCache);
             if (string.IsNullOrEmpty(content)) { return null; }
 
-            // convert NPM package data to normalized form
             JsonDocument contentJSON = JsonDocument.Parse(content);
             JsonElement root = contentJSON.RootElement;
 
@@ -215,6 +227,7 @@ namespace Microsoft.CST.OpenSource.PackageManagers
 
             metadata.RepositoryUrl = new Uri(ENV_PYPI_ENDPOINT);
             metadata.PackageUri = new Uri(OssUtilities.GetJSONPropertyStringIfExists(infoElement, "package_url"));
+            metadata.LatestPackageVersion = OssUtilities.GetJSONPropertyStringIfExists(infoElement, "version"); // Ran in the root, always points to latest version.
             metadata.Keywords = OssUtilities.ConvertJSONToList(OssUtilities.GetJSONPropertyIfExists(infoElement, "keywords"));
 
             // classifiers
@@ -265,19 +278,8 @@ namespace Microsoft.CST.OpenSource.PackageManagers
                 metadata.Licenses = ((List<License>)metadata.Licenses).Concat(licenses);
             }
 
-            // get the version
-            List<Version> versions = GetVersions(contentJSON);
-            Version? latestVersion = GetLatestVersion(versions);
-
-            if (purl.Version != null)
-            {
-                // find the version object from the collection
-                metadata.Version = purl.Version;
-            }
-            else
-            {
-                metadata.Version = latestVersion is null ? purl.Version : latestVersion?.ToString();
-            }
+            // get the version, either use the provided one, or if null then use the LatestPackageVersion.
+            metadata.Version = purl.Version ?? metadata.LatestPackageVersion;
 
             // if we found any version at all, get the information.
             if (metadata.Version is not null)
@@ -299,7 +301,7 @@ namespace Microsoft.CST.OpenSource.PackageManagers
                                 metadata.Digests ??= new List<Digest>();
                                 List<Digest> digestsList = digests
                                     .Select(digest => new Digest(digest.Name, digest.Value.ToString())).ToList();
-                                metadata.Digests = ((List<Digest>)metadata.Digests).Concat(digestsList);
+                                metadata.Digests = ((List<Digest>)metadata.Digests).Concat(digestsList).ToList();
                             }
 
                             // TODO: Want to figure out how to store info for .whl files as well.
@@ -322,9 +324,14 @@ namespace Microsoft.CST.OpenSource.PackageManagers
                                 }
                                 
                                 metadata.UnpackedSize = OssUtilities.GetJSONPropertyIfExists(releaseFile, "size")?.GetInt64();
-                                metadata.PublishTime = DateTimeOffset.Parse(OssUtilities.GetJSONPropertyStringIfExists(releaseFile, "upload_time"));
                                 metadata.PackageVersionUri = new Uri($"{ENV_PYPI_ENDPOINT}/project/{purl.Name}/{purl.Version}");
                                 metadata.SourceArtifactUri = new Uri(OssUtilities.GetJSONPropertyStringIfExists(releaseFile, "url"));
+                                
+                                string? uploadTime = OssUtilities.GetJSONPropertyStringIfExists(releaseFile, "upload_time");
+                                if (uploadTime != null)
+                                {
+                                    metadata.PublishTime = DateTime.Parse(uploadTime);
+                                }
                             }
                         }
                     }
